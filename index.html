@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ЭСФ Дашборд</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0f1420; --panel:#161d2e; --panel2:#1c2438;
+    --border:#252e45; --text:#eef1f8; --text2:#8b93a8;
+    --accent:#4f7cff; --green:#3bc47a; --amber:#f2b134; --red:#e2534d; --purple:#8b6ff0;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;}
+  .wrap{display:flex;min-height:100vh;}
+  .sidebar{width:220px;background:var(--panel);border-right:1px solid var(--border);padding:20px 14px;flex-shrink:0;}
+  .brand{font-weight:700;font-size:17px;margin-bottom:24px;display:flex;align-items:center;gap:8px;}
+  .brand span{color:var(--accent);}
+  .nav a{display:block;padding:9px 12px;border-radius:8px;color:var(--text2);text-decoration:none;font-size:14px;margin-bottom:2px;}
+  .nav a.active{background:var(--accent);color:#fff;}
+  .main{flex:1;padding:24px 28px;max-width:1200px;}
+  .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;}
+  h1{font-size:22px;margin:0;}
+  #dateLabel{color:var(--text2);font-size:13px;margin-top:2px;}
+  .btn{background:var(--accent);color:#fff;border:none;padding:9px 16px;border-radius:8px;font-size:14px;cursor:pointer;}
+  .btn:hover{opacity:.9;}
+  .btn.secondary{background:var(--panel2);border:1px solid var(--border);color:var(--text);}
+  #loginScreen{display:flex;flex-direction:column;align-items:center;justify-content:center;height:80vh;gap:14px;text-align:center;}
+  #loginScreen p{color:var(--text2);max-width:360px;font-size:14px;}
+  .hidden{display:none !important;}
+  .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px 18px;}
+  .card .label{color:var(--text2);font-size:13px;margin-bottom:6px;}
+  .card .value{font-size:26px;font-weight:700;}
+  .card .sub{font-size:12px;color:var(--text2);margin-top:4px;}
+  .grid2{display:grid;grid-template-columns:1fr 1.3fr;gap:14px;margin-bottom:20px;}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px;}
+  .panel h3{margin:0 0 14px;font-size:14px;color:var(--text2);font-weight:600;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th{text-align:left;color:var(--text2);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--border);}
+  td{padding:7px 8px;border-bottom:1px solid var(--border);}
+  .pill{padding:3px 9px;border-radius:100px;font-size:12px;display:inline-block;}
+  .pill.ok{background:rgba(59,196,122,.15);color:var(--green);}
+  .pill.wait{background:rgba(242,177,52,.15);color:var(--amber);}
+  .pill.no{background:rgba(226,83,77,.15);color:var(--red);}
+  .pill.nm{background:rgba(139,111,240,.15);color:var(--purple);}
+  .barrow{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+  .barrow .name{width:120px;font-size:13px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .barrow .track{flex:1;height:8px;background:var(--panel2);border-radius:4px;overflow:hidden;}
+  .barrow .fill{height:100%;background:var(--amber);}
+  .barrow .num{width:26px;text-align:right;font-size:12px;color:var(--text2);}
+  #err{color:var(--red);font-size:13px;margin-top:10px;white-space:pre-wrap;}
+</style>
+</head>
+<body>
+
+<div id="loginScreen">
+  <div class="brand">📊 <span>ЭСФ</span> Дашборд</div>
+  <p>Давом этиш учун Google хисобингиз билан киринг. Факат Google Sheets'ингизга кириш хукуки бор аккаунт маьлумотни куради.</p>
+  <button class="btn" id="loginBtn">Google билан кириш</button>
+  <div id="err"></div>
+</div>
+
+<div class="wrap hidden" id="app">
+  <div class="sidebar">
+    <div class="brand">📊 <span>ЭСФ</span> Дашборд</div>
+    <div class="nav">
+      <a class="active" href="#">Главная</a>
+    </div>
+  </div>
+  <div class="main">
+    <div class="topbar">
+      <div>
+        <h1>Дашборд</h1>
+        <div id="dateLabel"></div>
+      </div>
+      <div>
+        <button class="btn secondary" id="refreshBtn">↻ Янгилаш</button>
+      </div>
+    </div>
+
+    <div class="cards" id="cards"></div>
+
+    <div class="grid2">
+      <div class="panel">
+        <h3>Статуслар</h3>
+        <canvas id="donut" height="200"></canvas>
+      </div>
+      <div class="panel">
+        <h3>Ходимлар буйича кутилаётган</h3>
+        <div id="empBars"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Сунгги 20 та амал</h3>
+      <table>
+        <thead><tr><th>Вакт</th><th>Фактура</th><th>Контрагент</th><th>Ходим</th><th>Статус</th></tr></thead>
+        <tbody id="logsBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+// =========================================
+// СОЗЛАМАЛАР — шуларни узингизникига алмаштиринг
+// =========================================
+const CLIENT_ID = "СИЗНИНГ_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com";
+const SPREADSHEET_ID = "СИЗНИНГ_SPREADSHEET_ID";
+const MAIN_SHEETS = [
+  "СФ с Soliq ADM Aster",
+  "СФ с Soliq AAS",
+  "СФ с Soliq AAT",
+  "СФ с Soliq LA"
+];
+const LOG_SHEET = "logs";
+const SCOPES = "https://www.googleapis.com/auth/spreadsheets.readonly";
+// =========================================
+
+let accessToken = null;
+let tokenClient = null;
+
+function initGoogle(){
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: (resp) => {
+      if (resp.error){ showErr("Кириш рад этилди: " + resp.error); return; }
+      accessToken = resp.access_token;
+      document.getElementById("loginScreen").classList.add("hidden");
+      document.getElementById("app").classList.remove("hidden");
+      loadAll();
+    }
+  });
+}
+window.onload = initGoogle;
+
+document.getElementById("loginBtn").onclick = () => tokenClient.requestAccessToken();
+document.getElementById("refreshBtn").onclick = () => loadAll();
+
+function showErr(msg){
+  document.getElementById("err").textContent = msg;
+}
+
+async function fetchRange(sheetName){
+  const range = encodeURIComponent(sheetName);
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}`;
+  const res = await fetch(url, { headers: { Authorization: "Bearer " + accessToken } });
+  if (!res.ok){
+    const t = await res.text();
+    throw new Error(`${sheetName}: ${res.status} ${t}`);
+  }
+  const data = await res.json();
+  return data.values || [];
+}
+
+function colMap(headerRow){
+  const map = {};
+  headerRow.forEach((h,i) => { map[(h||"").trim()] = i; });
+  return map;
+}
+
+async function loadAll(){
+  showErr("");
+  document.getElementById("dateLabel").textContent = new Date().toLocaleString("ru-RU");
+  try{
+    let totalSent=0, totalConfirmed=0, totalPending=0, totalRejected=0, totalNotMine=0;
+    const empPending = {};
+
+    for (const sheetName of MAIN_SHEETS){
+      const rows = await fetchRange(sheetName);
+      if (rows.length < 2) continue;
+      const map = colMap(rows[0]);
+      const idxSent = map["Отправлено"];
+      const idxSigned = map["Подписано"];
+      const idxResp = map["ответственный"];
+
+      for (let i=1;i<rows.length;i++){
+        const r = rows[i];
+        const sent = (r[idxSent]||"").trim();
+        const status = (r[idxSigned]||"").trim();
+        if (sent !== "Да") continue;
+        totalSent++;
+        if (status === "К подписи") totalConfirmed++;
+        else if (status === "Отменено") totalRejected++;
+        else if (status === "Не моё") totalNotMine++;
+        else {
+          totalPending++;
+          const resp = (r[idxResp]||"Номаьлум").trim();
+          empPending[resp] = (empPending[resp]||0) + 1;
+        }
+      }
+    }
+
+    renderCards(totalSent, totalConfirmed, totalPending, totalRejected, totalNotMine);
+    renderDonut(totalConfirmed, totalPending, totalRejected, totalNotMine);
+    renderEmpBars(empPending);
+
+    const logRows = await fetchRange(LOG_SHEET);
+    renderLogs(logRows);
+
+  } catch(e){
+    showErr("Хатолик: " + e.message + "\n\nSheet номлари ва CLIENT_ID/SPREADSHEET_ID тугрилигини текширинг.");
+    console.error(e);
+  }
+}
+
+function renderCards(sent, confirmed, pending, rejected, notMine){
+  const pct = sent ? Math.round((confirmed/sent)*100) : 0;
+  document.getElementById("cards").innerHTML = `
+    <div class="card"><div class="label">Юборилган</div><div class="value">${sent}</div></div>
+    <div class="card"><div class="label">Тасдикланган</div><div class="value" style="color:var(--green)">${confirmed}</div><div class="sub">${pct}%</div></div>
+    <div class="card"><div class="label">Кутилаётган</div><div class="value" style="color:var(--amber)">${pending}</div></div>
+    <div class="card"><div class="label">Рад / Не моё</div><div class="value" style="color:var(--red)">${rejected+notMine}</div></div>
+  `;
+}
+
+let donutChart;
+function renderDonut(confirmed, pending, rejected, notMine){
+  const ctx = document.getElementById("donut");
+  const data = [confirmed, pending, rejected, notMine];
+  if (donutChart) donutChart.destroy();
+  donutChart = new Chart(ctx, {
+    type: "doughnut",
+    data: {
+      labels: ["Тасдикланган","Кутилаётган","Рад этилган","Не моё"],
+      datasets: [{ data, backgroundColor: ["#3bc47a","#f2b134","#e2534d","#8b6ff0"], borderWidth:0 }]
+    },
+    options: {
+      plugins: { legend: { position:"bottom", labels:{ color:"#eef1f8", boxWidth:10, font:{size:12} } } }
+    }
+  });
+}
+
+function renderEmpBars(empPending){
+  const entries = Object.entries(empPending).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const max = entries.length ? entries[0][1] : 1;
+  document.getElementById("empBars").innerHTML = entries.map(([name,count]) => `
+    <div class="barrow">
+      <div class="name">${name}</div>
+      <div class="track"><div class="fill" style="width:${(count/max)*100}%"></div></div>
+      <div class="num">${count}</div>
+    </div>
+  `).join("") || `<div style="color:var(--text2);font-size:13px">Кутилаётган фактура йук</div>`;
+}
+
+function statusPill(status){
+  const s = (status||"").toLowerCase();
+  if (s.includes("approved")) return `<span class="pill ok">Тасдикланди</span>`;
+  if (s.includes("reject")) return `<span class="pill no">Рад этилди</span>`;
+  if (s.includes("not_mine")) return `<span class="pill nm">Не моё</span>`;
+  return `<span class="pill wait">${status||"-"}</span>`;
+}
+
+function renderLogs(rows){
+  const last = rows.slice(-20).reverse();
+  document.getElementById("logsBody").innerHTML = last.map(r => `
+    <tr>
+      <td>${r[5]||""}</td>
+      <td>${r[0]||""}</td>
+      <td>${r[9]||""}</td>
+      <td>${r[1]||""}</td>
+      <td>${statusPill(r[4])}</td>
+    </tr>
+  `).join("") || `<tr><td colspan="5" style="color:var(--text2)">Маьлумот йук</td></tr>`;
+}
+</script>
+</body>
+</html>
