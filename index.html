@@ -739,22 +739,56 @@ function getField(item, name){
 
 function renderCounterparties(items){
   const counts={};
+
+  // Ищем название колонки контрагента среди возможных вариантов.
+  function counterpartyValue(item){
+    const candidates=[
+      "Контрагент","контрагент","Контрагент наименование",
+      "Наименование контрагента","Поставщик","Поставщик/контрагент",
+      "Поставщик (контрагент)"
+    ];
+    for(const name of candidates){
+      const idx=item.map[name];
+      if(idx!==undefined){
+        const value=(item.row[idx]||"").trim();
+        if(value) return value;
+      }
+    }
+
+    // Резервный поиск по заголовкам: любое поле, содержащее "контрагент".
+    for(const [key,idx] of Object.entries(item.map)){
+      if(String(key).toLowerCase().includes("контрагент")){
+        const value=(item.row[idx]||"").trim();
+        if(value) return value;
+      }
+    }
+    return "";
+  }
+
   items.forEach(item=>{
-    const c=getField(item,"Контрагент") || "Не указан";
+    const c=counterpartyValue(item);
+    // Пустые/неопределённые контрагенты не попадают в TOP-10.
+    if(!c) return;
     counts[c]=(counts[c]||0)+1;
   });
-  const arr=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,10);
-  const rows = arr.map(([name,n],i)=>`
-      <div class="collapse-row" style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border)">
-        <span class="long-text" title="${name}">${i+1}. ${name}</span><b>${fmt(n)}</b>
-      </div>`).join("");
+
+  const arr=Object.entries(counts)
+    .sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0],"ru"))
+    .slice(0,10);
+
+  const rows=arr.map(([name,n],i)=>`
+    <div class="collapse-row" style="display:flex;justify-content:space-between;gap:15px;padding:9px 0;border-bottom:1px solid var(--border)">
+      <span class="long-text" title="${name}">${i+1}. ${name}</span>
+      <b>${fmt(n)}</b>
+    </div>`).join("");
+
   document.getElementById("counterpartyList").innerHTML =
-    rows ? `<div class="collapsible-list collapsed" data-limit="4">${rows}
-      <button class="collapse-toggle" type="button">Показать ещё</button></div>`
-    : `<div style="color:var(--text2)">Нет данных</div>`;
+    rows
+      ? `<div class="collapsible-list collapsed">${rows}<button class="collapse-toggle" type="button">Показать ещё</button></div>`
+      : `<div style="color:var(--text2)">Контрагенты не найдены</div>`;
+
   initCollapsibles(document.getElementById("counterpartyList"));
 }
-
 function renderEmployeeProfiles(items){
   const stats={};
   items.forEach(item=>{
