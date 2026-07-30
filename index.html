@@ -81,6 +81,21 @@
       </div>
     </div>
 
+    <div class="panel" style="margin-bottom:20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <div>
+        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px;">С даты</label>
+        <input type="date" id="fromDate" style="background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:13px;">
+      </div>
+      <div>
+        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px;">По дату</label>
+        <input type="date" id="toDate" style="background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:13px;">
+      </div>
+      <button class="btn secondary" id="thisMonthBtn" style="margin-top:18px;">Этот месяц</button>
+      <button class="btn secondary" id="allTimeBtn" style="margin-top:18px;">Всё время</button>
+      <button class="btn" id="applyFilterBtn" style="margin-top:18px;">Применить</button>
+      <span id="filterInfo" style="margin-top:18px;font-size:12px;color:var(--text2);"></span>
+    </div>
+
     <div class="cards" id="cards"></div>
 
     <div class="panel" style="margin-bottom:20px;">
@@ -148,6 +163,35 @@ window.onload = initGoogle;
 
 document.getElementById("loginBtn").onclick = () => tokenClient.requestAccessToken();
 document.getElementById("refreshBtn").onclick = () => loadAll();
+document.getElementById("applyFilterBtn").onclick = () => loadAll();
+document.getElementById("thisMonthBtn").onclick = () => {
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+  document.getElementById("fromDate").value = first.toISOString().slice(0,10);
+  document.getElementById("toDate").value = now.toISOString().slice(0,10);
+  loadAll();
+};
+document.getElementById("allTimeBtn").onclick = () => {
+  document.getElementById("fromDate").value = "";
+  document.getElementById("toDate").value = "";
+  loadAll();
+};
+
+// Sahifa ochilganda — standart filtr: shu oy
+(function setDefaultDates(){
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+  document.getElementById("fromDate").value = first.toISOString().slice(0,10);
+  document.getElementById("toDate").value = now.toISOString().slice(0,10);
+})();
+
+// "0000005002 от 06.07.2026" каби матндан санани ажратиб олиш
+function extractDate(invoiceText){
+  const m = (invoiceText||"").match(/(\d{2})\.(\d{2})\.(\d{4})/);
+  if (!m) return null;
+  const [, dd, mm, yyyy] = m;
+  return new Date(`${yyyy}-${mm}-${dd}`);
+}
 
 function showErr(msg){
   document.getElementById("err").textContent = msg;
@@ -178,6 +222,12 @@ async function loadAll(){
     let totalSent=0, totalConfirmed=0, totalPending=0, totalRejected=0, totalNotMine=0;
     const empPending = {};
     const byCompany = [];
+    let skippedNoDate = 0;
+
+    const fromVal = document.getElementById("fromDate").value;
+    const toVal = document.getElementById("toDate").value;
+    const fromD = fromVal ? new Date(fromVal) : null;
+    const toD = toVal ? new Date(toVal + "T23:59:59") : null;
 
     for (const sheetName of MAIN_SHEETS){
       const rows = await fetchRange(sheetName);
@@ -189,12 +239,20 @@ async function loadAll(){
         const idxSigned = map["Подписано"];
         const idxResp = map["ответственный"];
         const idxDept = map["Подразделение"];
+        const idxInvoice = map["СЧЁТ-ФАКТУРА"];
 
         for (let i=1;i<rows.length;i++){
           const r = rows[i];
           const s = (r[idxSent]||"").trim();
           const status = (r[idxSigned]||"").trim();
           if (s !== "Да") continue;
+
+          // Sana bo'lmagan yoki filtr oralig'idan tashqari qatorlarni o'tkazib yuborish
+          const invDate = extractDate(r[idxInvoice]);
+          if (!invDate){ skippedNoDate++; continue; }
+          if (fromD && invDate < fromD) continue;
+          if (toD && invDate > toD) continue;
+
           sent++;
           if (status === "К подписи") confirmed++;
           else if (status === "Отменено") rejected++;
@@ -213,6 +271,9 @@ async function loadAll(){
       totalSent += sent; totalConfirmed += confirmed; totalPending += pending;
       totalRejected += rejected; totalNotMine += notMine;
     }
+
+    document.getElementById("filterInfo").textContent =
+      skippedNoDate ? `Санаси аникланмаган ${fmt(skippedNoDate)} катор хисобга олинмади` : "";
 
     renderCards(totalSent, totalConfirmed, totalPending, totalRejected, totalNotMine);
     renderCompanyTable(byCompany);
