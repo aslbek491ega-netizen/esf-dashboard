@@ -267,7 +267,6 @@ async function loadAll(){
         for (let i=1;i<rows.length;i++){
           const r = rows[i];
 
-          // Дата применяется ко всем показателям.
           const invDate = extractDate(r[idxInvoice]);
           if (!invDate){ skippedNoDate++; continue; }
           if (fromD && invDate < fromD) continue;
@@ -277,30 +276,32 @@ async function loadAll(){
           const signedStatus = idxSigned !== undefined ? (r[idxSigned]||"").trim() : "";
           const prosStatus = idxPros !== undefined ? (r[idxPros]||"").trim() : "";
 
-          // 1. Отправлено = только "Отправлено" = "Да"
-          if (sentStatus === "Да") sent++;
+          // Приоритет статусов:
+          // 1) Отказано — если в Отправлено / Подписано / Просажено стоит "Отменено"
+          // 2) Подтверждено — Отправлено = Да И Подписано = Да
+          // 3) Ожидает — Отправлено = Да И Подписано = Нет
+          // 4) Отправлено — Отправлено = Да (если не попало выше)
 
-          // 2. Подтверждено = только "Подписано" = "Да"
-          if (signedStatus === "Да") confirmed++;
+          const isCancelled =
+            sentStatus === "Отменено" ||
+            signedStatus === "Отменено" ||
+            prosStatus === "Отменено";
 
-          // 3. Ожидает = только "Подписано" = "Нет"
-          if (signedStatus === "Нет") {
+          if (isCancelled) {
+            rejected++;
+          } else if (sentStatus === "Да" && signedStatus === "Да") {
+            sent++;
+            confirmed++;
+          } else if (sentStatus === "Да" && signedStatus === "Нет") {
+            sent++;
             pending++;
 
             const respName = (r[idxResp]||"Неизвестно").trim();
             const dept = idxDept !== undefined ? (r[idxDept]||"").trim() : "";
             const key = dept ? `${respName} (${dept})` : respName;
             empPending[key] = (empPending[key]||0) + 1;
-          }
-
-          // 4. Отказано = "Отменено" в любом из полей:
-          //    Отправлено / Подписано / Просажено
-          if (
-            sentStatus === "Отменено" ||
-            signedStatus === "Отменено" ||
-            prosStatus === "Отменено"
-          ) {
-            rejected++;
+          } else if (sentStatus === "Да") {
+            sent++;
           }
         }
       }
@@ -310,15 +311,14 @@ async function loadAll(){
       totalConfirmed += confirmed;
       totalPending += pending;
       totalRejected += rejected;
-      totalNotMine += 0;
     }
 
     document.getElementById("filterInfo").textContent =
       skippedNoDate ? `Санаси аникланмаган ${fmt(skippedNoDate)} катор хисобга олинмади` : "";
 
-    renderCards(totalSent, totalConfirmed, totalPending, totalRejected, totalNotMine);
+    renderCards(totalSent, totalConfirmed, totalPending, totalRejected, 0);
     renderCompanyTable(byCompany);
-    renderDonut(totalConfirmed, totalPending, totalRejected, totalNotMine);
+    renderDonut(totalConfirmed, totalPending, totalRejected);
     renderEmpBars(empPending);
 
     const logRows = await fetchRange(LOG_SHEET);
@@ -359,7 +359,7 @@ function renderCards(sent, confirmed, pending, rejected, notMine){
 }
 
 let donutChart;
-function renderDonut(confirmed, pending, rejected, notMine){
+function renderDonut(confirmed, pending, rejected){
   const ctx = document.getElementById("donut");
   const data = [confirmed, pending, rejected];
   if (donutChart) donutChart.destroy();
