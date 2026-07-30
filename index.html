@@ -73,6 +73,7 @@
   .collapse-toggle:hover { filter:brightness(1.08); }
   .long-text { max-width:360px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; }
   .long-text.expanded { white-space:normal; overflow:visible; }
+#employeeBody td{padding:9px 8px;border-bottom:1px solid var(--border)}
 </style>
 </head>
 <body>
@@ -502,6 +503,7 @@ async function loadAll(){
     renderAgingAndCritical(allInvoiceRows);
     renderCounterparties(currentPeriodRows);
     renderEmployeeProfiles(allInvoiceRows);
+    renderAttention(allInvoiceRows);
     renderMonthlyChart(allInvoiceRows);
     currentDetailRows = allInvoiceRows.slice();
     setupSearch();
@@ -810,7 +812,7 @@ function renderCounterparties(items){
 function renderEmployeeProfiles(items){
   const stats={};
   items.forEach(item=>{
-    const name=getField(item,"ответственный") || "Неизвестно";
+    const name=getField(item,"ответственный")||"Не указан";
     if(!stats[name]) stats[name]={sent:0,confirmed:0,pending:0,rejected:0};
     const st=getRowStatus(item);
     if(st==="Отказано") stats[name].rejected++;
@@ -819,24 +821,58 @@ function renderEmployeeProfiles(items){
     else if(st==="Отправлено") stats[name].sent++;
   });
 
-  const arr=Object.entries(stats).sort((a,b)=>b[1].sent-a[1].sent);
-  const rows = arr.map(([name,s])=>{
-      const pct=s.sent?Math.round(s.confirmed/s.sent*100):0;
+  const arr=Object.entries(stats)
+    .filter(([n,v])=>n!=="Не указан" && (v.sent+v.rejected)>0)
+    .sort((a,b)=>(b[1].sent+b[1].rejected)-(a[1].sent+a[1].rejected));
+
+  const body=document.getElementById("employeeBody");
+  if(body){
+    body.innerHTML=arr.map(([name,v])=>{
+      const total=v.sent+v.rejected;
+      const pct=total?Math.round(v.confirmed/total*100):0;
+      return `<tr class="collapse-row">
+        <td class="long-text" title="${name}">${name}</td>
+        <td>${fmt(v.sent)}</td>
+        <td style="color:var(--green)">${fmt(v.confirmed)}</td>
+        <td style="color:var(--amber)">${fmt(v.pending)}</td>
+        <td style="color:var(--red)">${fmt(v.rejected)}</td>
+        <td><b>${pct}%</b></td>
+      </tr>`;
+    }).join("")||`<tr><td colspan="6" style="color:var(--text2)">Нет данных</td></tr>`;
+  }
+
+  const profiles=document.getElementById("employeeProfiles");
+  if(profiles){
+    profiles.innerHTML=arr.map(([name,v])=>{
+      const total=v.sent+v.rejected;
+      const pct=total?Math.round(v.confirmed/total*100):0;
       return `<div class="collapse-row" style="display:grid;grid-template-columns:1.5fr repeat(5,1fr);gap:8px;padding:9px 0;border-bottom:1px solid var(--border);font-size:12px">
-        <b class="long-text" title="${name}">${name}</b><span>Всего: ${fmt(s.sent)}</span>
-        <span style="color:var(--green)">Подтв.: ${fmt(s.confirmed)}</span>
-        <span style="color:var(--amber)">Ожид.: ${fmt(s.pending)}</span>
-        <span style="color:var(--red)">Отказ.: ${fmt(s.rejected)}</span>
-        <b>${pct}%</b>
+        <b class="long-text" title="${name}">${name}</b><span>Всего: ${fmt(total)}</span>
+        <span style="color:var(--green)">Подтв.: ${fmt(v.confirmed)}</span>
+        <span style="color:var(--amber)">Ожид.: ${fmt(v.pending)}</span>
+        <span style="color:var(--red)">Отказ.: ${fmt(v.rejected)}</span><b>${pct}%</b>
       </div>`;
-    }).join("");
-  document.getElementById("employeeProfiles").innerHTML =
-    rows ? `<div class="collapsible-list collapsed">${rows}<button class="collapse-toggle" type="button">Показать ещё</button></div>`
-    : `<div style="color:var(--text2)">Нет данных</div>`;
-  initCollapsibles(document.getElementById("employeeProfiles"));
+    }).join("")||`<div style="color:var(--text2)">Нет данных</div>`;
+    if(arr.length) profiles.innerHTML=`<div class="collapsible-list collapsed">${profiles.innerHTML}<button class="collapse-toggle" type="button">Показать ещё</button></div>`;
+    initCollapsibles(profiles);
+  }
 }
 
-let monthlyChart;
+function renderAttention(items){
+  const stats={};
+  items.forEach(item=>{
+    if(getRowStatus(item)!=="Ожидает") return;
+    const name=getField(item,"ответственный");
+    if(name) stats[name]=(stats[name]||0)+1;
+  });
+  const entries=Object.entries(stats).sort((a,b)=>b[1]-a[1]);
+  const box=document.getElementById("attentionList");
+  if(!box)return;
+  const rows=entries.map(([name,n])=>`<div class="collapse-row" style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><span class="long-text" title="${name}">${name}</span><span class="pill wait">${fmt(n)}</span></div>`).join("");
+  box.innerHTML=rows?`<div class="collapsible-list collapsed">${rows}<button class="collapse-toggle" type="button">Показать ещё</button></div>`:`<div style="color:var(--text2)">Нет ожидающих ЭСФ</div>`;
+  initCollapsibles(box);
+}
+
 function renderMonthlyChart(items){
   const m={};
   items.forEach(item=>{
