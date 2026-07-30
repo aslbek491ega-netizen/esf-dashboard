@@ -96,7 +96,47 @@
       <span id="filterInfo" style="margin-top:18px;font-size:12px;color:var(--text2);"></span>
     </div>
 
+    <div class="panel" style="margin-bottom:20px;display:flex;gap:10px;flex-wrap:wrap;align-items:end;">
+      <div>
+        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px;">Поиск</label>
+        <input id="searchInput" placeholder="ЭСФ / контрагент / сотрудник"
+          style="background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 10px;font-size:13px;width:260px;">
+      </div>
+      <div>
+        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px;">Статус</label>
+        <select id="statusFilter" style="background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 10px;font-size:13px;">
+          <option value="">Все статусы</option>
+          <option value="Отправлено">Отправлено</option>
+          <option value="Подтверждено">Подтверждено</option>
+          <option value="Ожидает">Ожидает</option>
+          <option value="Отказано">Отказано</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px;">Просрочка</label>
+        <select id="ageFilter" style="background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 10px;font-size:13px;">
+          <option value="">Все</option>
+          <option value="0-1">0–1 день</option>
+          <option value="2-3">2–3 дня</option>
+          <option value="4-7">4–7 дней</option>
+          <option value="7+">7+ дней</option>
+        </select>
+      </div>
+      <button class="btn secondary" id="clearFiltersBtn">Сбросить</button>
+    </div>
+
     <div class="cards" id="cards"></div>
+
+    <div class="grid2" style="margin-bottom:20px;">
+      <div class="panel">
+        <h3>⏱ Просрочка ожидающих ЭСФ</h3>
+        <div id="agingStats"></div>
+      </div>
+      <div class="panel">
+        <h3>🚨 Критические ЭСФ — более 7 дней</h3>
+        <div id="criticalList"></div>
+      </div>
+    </div>
 
     <div class="panel" style="margin-bottom:20px;">
       <h3>По компаниям</h3>
@@ -165,6 +205,8 @@ const SCOPES = "https://www.googleapis.com/auth/spreadsheets.readonly";
 let accessToken = null;
 let tokenClient = null;
 let selectedCompany = "";
+let allInvoiceRows = [];
+let filteredInvoiceRows = [];
 
 function buildSidebar(){
   const nav = document.getElementById("navList");
@@ -257,6 +299,7 @@ async function loadAll(){
   showErr("");
   document.getElementById("dateLabel").textContent = new Date().toLocaleString("ru-RU");
   try{
+    allInvoiceRows = [];
     let totalSent=0, totalConfirmed=0, totalPending=0, totalRejected=0, totalNotMine=0;
     const empPending = {};
     const employeeStats = {};
@@ -274,6 +317,12 @@ async function loadAll(){
 
     for (const sheetName of sheetsToProcess){
       const rows = await fetchRange(sheetName);
+      if (rows.length >= 2) {
+        const mapForSearch = colMap(rows[0]);
+        for (let ri=1; ri<rows.length; ri++) {
+          allInvoiceRows.push({sheetName, row:rows[ri], map:mapForSearch});
+        }
+      }
       let sent=0, confirmed=0, pending=0, rejected=0, notMine=0;
 
       if (rows.length >= 2){
@@ -361,6 +410,8 @@ async function loadAll(){
     renderEmployeeTable(employeeStats);
     renderAttention(employeeStats);
     renderDailyChart(dailyStats);
+    renderAgingAndCritical(allInvoiceRows);
+    setupSearch();
 
     const logRows = await fetchRange(LOG_SHEET);
     renderLogs(logRows);
@@ -499,6 +550,98 @@ function renderDailyChart(stats){
       }
     }
   });
+}
+
+
+function daysOld(invoiceText){
+  const d = extractDate(invoiceText);
+  if (!d) return null;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const base = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  return Math.max(0, Math.floor((today-base)/86400000));
+}
+
+function ageBucket(days){
+  if (days === null) return "";
+  if (days <= 1) return "0-1";
+  if (days <= 3) return "2-3";
+  if (days <= 7) return "4-7";
+  return "7+";
+}
+
+function getRowStatus(item){
+  const m=item.map, r=item.row;
+  const sent=(m["Отправлено"]!==undefined?(r[m["Отправлено"]]||"").trim():"");
+  const signed=(m["Подписано"]!==undefined?(r[m["Подписано"]]||"").trim():"");
+  const pros=(m["Просажено"]!==undefined?(r[m["Просажено"]]||"").trim():"");
+  if (sent==="Отменено" || signed==="Отменено" || pros==="Отменено") return "Отказано";
+  if (sent==="Да" && signed==="Да") return "Подтверждено";
+  if (sent==="Да" && signed==="Нет") return "Ожидает";
+  if (sent==="Да") return "Отправлено";
+  return "";
+}
+
+function renderAgingAndCritical(items){
+  const aging={"0-1":0,"2-3":0,"4-7":0,"7+":0};
+  const critical=[];
+  items.forEach(item=>{
+    if(getRowStatus(item)!=="Ожидает") return;
+    const inv=item.row[item.map["СЧЁТ-ФАКТУРА"]]||"";
+    const days=daysOld(inv);
+    const bucket=ageBucket(days);
+    if(bucket) aging[bucket]++;
+    if(days!==null && days>7) critical.push({item,days});
+  });
+
+  document.getElementById("agingStats").innerHTML =
+    Object.entries(aging).map(([b,n])=>`
+      <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)">
+        <span>${b==="7+"?"7+ дней":b.replace("-","–")+" дня"}</span>
+        <b>${fmt(n)}</b>
+      </div>`).join("");
+
+  critical.sort((a,b)=>b.days-a.days);
+  document.getElementById("criticalList").innerHTML =
+    critical.slice(0,10).map(({item,days})=>{
+      const r=item.row,m=item.map;
+      const inv=r[m["СЧЁТ-ФАКТУРА"]]||"-";
+      const resp=m["ответственный"]!==undefined?(r[m["ответственный"]]||"Неизвестно"):"Неизвестно";
+      return `<div style="padding:9px 0;border-bottom:1px solid var(--border);font-size:12px">
+        <b>${inv}</b><br><span style="color:var(--text2)">${resp} · <span style="color:var(--red)">${days} дн.</span></span>
+      </div>`;
+    }).join("") || `<div style="color:var(--text2);font-size:13px">Критических ЭСФ нет</div>`;
+}
+
+function setupSearch(){
+  const search=document.getElementById("searchInput");
+  const status=document.getElementById("statusFilter");
+  const age=document.getElementById("ageFilter");
+  const clear=document.getElementById("clearFiltersBtn");
+  if(!search || search.dataset.ready) return;
+  search.dataset.ready="1";
+
+  const apply=()=>{
+    const q=(search.value||"").toLowerCase().trim();
+    const st=status.value, ag=age.value;
+    filteredInvoiceRows=allInvoiceRows.filter(item=>{
+      const r=item.row,m=item.map;
+      const inv=m["СЧЁТ-ФАКТУРА"]!==undefined?(r[m["СЧЁТ-ФАКТУРА"]]||""):"";
+      const resp=m["ответственный"]!==undefined?(r[m["ответственный"]]||""):"";
+      const counter=m["Контрагент"]!==undefined?(r[m["Контрагент"]]||""):"";
+      const hay=(inv+" "+resp+" "+counter).toLowerCase();
+      const okQ=!q || hay.includes(q);
+      const okS=!st || getRowStatus(item)===st;
+      const days=daysOld(inv);
+      const okA=!ag || ageBucket(days)===ag;
+      return okQ && okS && okA;
+    });
+  };
+
+  search.oninput=apply;
+  status.onchange=apply;
+  age.onchange=apply;
+  clear.onclick=()=>{search.value="";status.value="";age.value="";apply();};
 }
 
 function statusPill(status){
