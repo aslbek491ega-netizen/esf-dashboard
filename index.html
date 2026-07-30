@@ -159,8 +159,6 @@
 
     <div class="cards" id="cards"></div>
 
-    <div class="warnBox" id="dataQualityBox"></div>
-
     <div style="display:flex;gap:10px;margin-bottom:20px;">
       <button class="btn" id="exportCsvBtn">📥 Скачать Excel (CSV)</button>
       <button class="btn secondary" id="printBtn">🖨 Печать отчёта</button>
@@ -557,10 +555,6 @@ async function loadAll(){
       pending:a.pending+c.pending, rejected:a.rejected+c.rejected
     }), {sent:0,confirmed:0,pending:0,rejected:0});
 
-    document.getElementById("filterInfo").textContent =
-      skippedNoDate ? `Дата не определена у ${fmt(skippedNoDate)} строк — не учтены` : "";
-
-    renderDataQuality(skippedNoDate, duplicateCount);
     renderCards(totals);
     renderCompanyTable(byCompany);
     renderCompanyChart(byCompany);
@@ -623,19 +617,6 @@ async function loadAll(){
 // =========================================
 // РЕНДЕР ФУНКЦИЯЛАРИ
 // =========================================
-function renderDataQuality(skipped, duplicates){
-  const box = document.getElementById("dataQualityBox");
-  const parts = [];
-  if (skipped) parts.push(`⚠️ ${fmt(skipped)} строк без определённой даты (не учтены в подсчётах)`);
-  if (duplicates) parts.push(`⚠️ Обнаружено ${fmt(duplicates)} возможных дублей счёт-фактур`);
-  if (parts.length){
-    box.style.display = "block";
-    box.innerHTML = parts.join(" &nbsp;|&nbsp; ");
-  } else {
-    box.style.display = "none";
-  }
-}
-
 function renderCards(t){
   const pct = t.sent ? Math.round((t.confirmed/t.sent)*100) : 0;
   document.getElementById("cards").innerHTML = `
