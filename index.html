@@ -101,7 +101,7 @@
     <div class="panel" style="margin-bottom:20px;">
       <h3>По компаниям</h3>
       <table>
-        <thead><tr><th>Компания</th><th>Отправлено</th><th>Подтверждено</th><th>Ожидает</th><th>Отказано / Не моё</th><th>%</th></tr></thead>
+        <thead><tr><th>Компания</th><th>Отправлено (Отправлено = Да)</th><th>Подтверждено (Подписано = Да)</th><th>Ожидает (Подписано = Нет)</th><th>Отказано (Отменено)</th><th>%</th></tr></thead>
         <tbody id="companyBody"></tbody>
       </table>
     </div>
@@ -259,40 +259,58 @@ async function loadAll(){
         const map = colMap(rows[0]);
         const idxSent = map["Отправлено"];
         const idxSigned = map["Подписано"];
+        const idxPros = map["Просажено"];
         const idxResp = map["ответственный"];
         const idxDept = map["Подразделение"];
         const idxInvoice = map["СЧЁТ-ФАКТУРА"];
 
         for (let i=1;i<rows.length;i++){
           const r = rows[i];
-          const s = (r[idxSent]||"").trim();
-          const status = (r[idxSigned]||"").trim();
-          if (s !== "Да") continue;
 
-          // Sana bo'lmagan yoki filtr oralig'idan tashqari qatorlarni o'tkazib yuborish
+          // Дата применяется ко всем показателям.
           const invDate = extractDate(r[idxInvoice]);
           if (!invDate){ skippedNoDate++; continue; }
           if (fromD && invDate < fromD) continue;
           if (toD && invDate > toD) continue;
 
-          sent++;
-          if (status === "К подписи") confirmed++;
-          else if (status === "Отменено") rejected++;
-          else if (status === "Не моё") notMine++;
-          else {
-            // "Нет", буш, ёки бошка хар кандай белгиланмаган статус — Кутилаётган
+          const sentStatus = idxSent !== undefined ? (r[idxSent]||"").trim() : "";
+          const signedStatus = idxSigned !== undefined ? (r[idxSigned]||"").trim() : "";
+          const prosStatus = idxPros !== undefined ? (r[idxPros]||"").trim() : "";
+
+          // 1. Отправлено = только "Отправлено" = "Да"
+          if (sentStatus === "Да") sent++;
+
+          // 2. Подтверждено = только "Подписано" = "Да"
+          if (signedStatus === "Да") confirmed++;
+
+          // 3. Ожидает = только "Подписано" = "Нет"
+          if (signedStatus === "Нет") {
             pending++;
+
             const respName = (r[idxResp]||"Неизвестно").trim();
             const dept = idxDept !== undefined ? (r[idxDept]||"").trim() : "";
             const key = dept ? `${respName} (${dept})` : respName;
             empPending[key] = (empPending[key]||0) + 1;
           }
+
+          // 4. Отказано = "Отменено" в любом из полей:
+          //    Отправлено / Подписано / Просажено
+          if (
+            sentStatus === "Отменено" ||
+            signedStatus === "Отменено" ||
+            prosStatus === "Отменено"
+          ) {
+            rejected++;
+          }
         }
       }
 
-      byCompany.push({ name: sheetName, sent, confirmed, pending, rejected: rejected+notMine });
-      totalSent += sent; totalConfirmed += confirmed; totalPending += pending;
-      totalRejected += rejected; totalNotMine += notMine;
+      byCompany.push({ name: sheetName, sent, confirmed, pending, rejected, notMine: 0 });
+      totalSent += sent;
+      totalConfirmed += confirmed;
+      totalPending += pending;
+      totalRejected += rejected;
+      totalNotMine += 0;
     }
 
     document.getElementById("filterInfo").textContent =
@@ -336,19 +354,19 @@ function renderCards(sent, confirmed, pending, rejected, notMine){
     <div class="card"><div class="label">Отправлено</div><div class="value">${fmt(sent)}</div></div>
     <div class="card"><div class="label">Подтверждено</div><div class="value" style="color:var(--green)">${fmt(confirmed)}</div><div class="sub">${pct}%</div></div>
     <div class="card"><div class="label">Ожидает</div><div class="value" style="color:var(--amber)">${fmt(pending)}</div></div>
-    <div class="card"><div class="label">Отказано / Не моё</div><div class="value" style="color:var(--red)">${fmt(rejected+notMine)}</div></div>
+    <div class="card"><div class="label">Отказано</div><div class="value" style="color:var(--red)">${fmt(rejected+notMine)}</div></div>
   `;
 }
 
 let donutChart;
 function renderDonut(confirmed, pending, rejected, notMine){
   const ctx = document.getElementById("donut");
-  const data = [confirmed, pending, rejected, notMine];
+  const data = [confirmed, pending, rejected];
   if (donutChart) donutChart.destroy();
   donutChart = new Chart(ctx, {
     type: "doughnut",
     data: {
-      labels: ["Подтверждено","Ожидает","Отказано","Не моё"],
+      labels: ["Подтверждено","Ожидает","Отказано"],
       datasets: [{ data, backgroundColor: ["#3bc47a","#f2b134","#e2534d","#8b6ff0"], borderWidth:0 }]
     },
     options: {
