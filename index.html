@@ -158,7 +158,7 @@
 
     <div class="grid2" style="margin-bottom:20px;">
       <div class="panel">
-        <h3>🏢 TOP-10 контрагентов</h3>
+        <h3>🏢 TOP-10 контрагентов (по колонке «Продавец»)</h3>
         <div id="counterpartyList"></div>
       </div>
       <div class="panel">
@@ -293,6 +293,7 @@ let selectedCompany = "";
 let allInvoiceRows = [];
 let filteredInvoiceRows = [];
 let currentDetailRows = [];
+let currentPeriodRows = [];
 
 function buildSidebar(){
   const nav = document.getElementById("navList");
@@ -386,6 +387,7 @@ async function loadAll(){
   document.getElementById("dateLabel").textContent = new Date().toLocaleString("ru-RU");
   try{
     allInvoiceRows = [];
+    currentPeriodRows = [];
     let totalSent=0, totalConfirmed=0, totalPending=0, totalRejected=0, totalNotMine=0;
     const empPending = {};
     const employeeStats = {};
@@ -427,6 +429,7 @@ async function loadAll(){
           if (!invDate){ skippedNoDate++; continue; }
           if (fromD && invDate < fromD) continue;
           if (toD && invDate > toD) continue;
+          currentPeriodRows.push({sheetName, row:r, map});
 
           const sentStatus = idxSent !== undefined ? (r[idxSent]||"").trim() : "";
           const signedStatus = idxSigned !== undefined ? (r[idxSigned]||"").trim() : "";
@@ -497,7 +500,7 @@ async function loadAll(){
     renderAttention(employeeStats);
     renderDailyChart(dailyStats);
     renderAgingAndCritical(allInvoiceRows);
-    renderCounterparties(allInvoiceRows);
+    renderCounterparties(currentPeriodRows);
     renderEmployeeProfiles(allInvoiceRows);
     renderMonthlyChart(allInvoiceRows);
     currentDetailRows = allInvoiceRows.slice();
@@ -723,6 +726,7 @@ function setupSearch(){
   const apply=()=>{
     applyDetailFilters();
     filteredInvoiceRows=currentDetailRows.slice();
+    renderCounterparties(currentDetailRows);
   };
 
   search.oninput=apply;
@@ -738,56 +742,70 @@ function getField(item, name){
 }
 
 function renderCounterparties(items){
-  const counts={};
+  const counts = {};
 
-  // Ищем название колонки контрагента среди возможных вариантов.
-  function counterpartyValue(item){
-    const candidates=[
-      "Контрагент","контрагент","Контрагент наименование",
-      "Наименование контрагента","Поставщик","Поставщик/контрагент",
-      "Поставщик (контрагент)"
+  // ВАЖНО: контрагент берётся именно из колонки "Продавец".
+  function getSeller(item){
+    const exactNames = [
+      "Продавец",
+      "продавец",
+      "ПРОДАВЕЦ",
+      "Продавец "
     ];
-    for(const name of candidates){
-      const idx=item.map[name];
-      if(idx!==undefined){
-        const value=(item.row[idx]||"").trim();
+
+    for(const name of exactNames){
+      if(item.map[name] !== undefined){
+        const value = String(item.row[item.map[name]] || "").trim();
         if(value) return value;
       }
     }
 
-    // Резервный поиск по заголовкам: любое поле, содержащее "контрагент".
-    for(const [key,idx] of Object.entries(item.map)){
-      if(String(key).toLowerCase().includes("контрагент")){
-        const value=(item.row[idx]||"").trim();
+    // Если пробелы/регистр в заголовке отличаются — ищем по слову "продавец".
+    for(const [key, idx] of Object.entries(item.map)){
+      const normalized = String(key).trim().toLowerCase();
+      if(normalized === "продавец" || normalized.includes("продавец")){
+        const value = String(item.row[idx] || "").trim();
         if(value) return value;
       }
     }
+
     return "";
   }
 
   items.forEach(item=>{
-    const c=counterpartyValue(item);
-    // Пустые/неопределённые контрагенты не попадают в TOP-10.
-    if(!c) return;
-    counts[c]=(counts[c]||0)+1;
+    const seller = getSeller(item);
+    if(!seller) return;
+
+    counts[seller] = (counts[seller] || 0) + 1;
   });
 
-  const arr=Object.entries(counts)
-    .sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0],"ru"))
+  const arr = Object.entries(counts)
+    .sort((a,b)=>{
+      if(b[1] !== a[1]) return b[1] - a[1];
+      return a[0].localeCompare(b[0], "ru");
+    })
     .slice(0,10);
 
-  const rows=arr.map(([name,n],i)=>`
-    <div class="collapse-row" style="display:flex;justify-content:space-between;gap:15px;padding:9px 0;border-bottom:1px solid var(--border)">
-      <span class="long-text" title="${name}">${i+1}. ${name}</span>
-      <b>${fmt(n)}</b>
-    </div>`).join("");
+  const rows = arr.map(([seller,count],i)=>`
+    <div class="collapse-row"
+         style="display:flex;justify-content:space-between;gap:15px;padding:10px 0;border-bottom:1px solid var(--border)">
+      <span class="long-text" title="${seller}">
+        ${i+1}. ${seller}
+      </span>
+      <b>${fmt(count)}</b>
+    </div>
+  `).join("");
 
-  document.getElementById("counterpartyList").innerHTML =
-    rows
-      ? `<div class="collapsible-list collapsed">${rows}<button class="collapse-toggle" type="button">Показать ещё</button></div>`
-      : `<div style="color:var(--text2)">Контрагенты не найдены</div>`;
+  const box = document.getElementById("counterpartyList");
 
-  initCollapsibles(document.getElementById("counterpartyList"));
+  box.innerHTML = rows
+    ? `<div class="collapsible-list collapsed">
+         ${rows}
+         <button class="collapse-toggle" type="button">Показать ещё</button>
+       </div>`
+    : `<div style="color:var(--text2)">Данные в колонке «Продавец» не найдены</div>`;
+
+  initCollapsibles(box);
 }
 function renderEmployeeProfiles(items){
   const stats={};
