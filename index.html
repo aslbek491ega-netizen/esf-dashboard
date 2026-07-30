@@ -117,16 +117,11 @@
       </div>
     </div>
 
-    <div class="grid2">
+    <div class="grid2" style="margin-bottom:20px;">
       <div class="panel">
         <h3>Рейтинг сотрудников</h3>
         <table>
-          <thead>
-            <tr>
-              <th>Сотрудник</th><th>Отправлено</th><th>Подтверждено</th>
-              <th>Ожидает</th><th>Отказано</th><th>%</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Сотрудник</th><th>Отправлено</th><th>Подтверждено</th><th>Ожидает</th><th>Отказано</th><th>%</th></tr></thead>
           <tbody id="employeeBody"></tbody>
         </table>
       </div>
@@ -319,36 +314,31 @@ async function loadAll(){
 
           if (!employeeStats[key]) employeeStats[key] = {sent:0, confirmed:0, pending:0, rejected:0};
 
+          const dayKey = invDate.toISOString().slice(0,10);
+          if (!dailyStats[dayKey]) dailyStats[dayKey] = {sent:0, confirmed:0, pending:0, rejected:0};
+
           if (isCancelled) {
             rejected++;
             employeeStats[key].rejected++;
+            dailyStats[dayKey].rejected++;
           } else if (sentStatus === "Да" && signedStatus === "Да") {
             sent++;
             confirmed++;
             employeeStats[key].sent++;
             employeeStats[key].confirmed++;
+            dailyStats[dayKey].sent++;
+            dailyStats[dayKey].confirmed++;
           } else if (sentStatus === "Да" && signedStatus === "Нет") {
             sent++;
             pending++;
             employeeStats[key].sent++;
             employeeStats[key].pending++;
             empPending[key] = (empPending[key]||0) + 1;
-          } else if (sentStatus === "Да") {
-            sent++;
-            employeeStats[key].sent++;
-          }
-
-          // Daily flow based on invoice date.
-          const dayKey = invDate.toISOString().slice(0,10);
-          if (!dailyStats[dayKey]) dailyStats[dayKey] = {sent:0, confirmed:0, pending:0, rejected:0};
-          if (isCancelled) dailyStats[dayKey].rejected++;
-          else if (sentStatus === "Да" && signedStatus === "Да") {
-            dailyStats[dayKey].sent++;
-            dailyStats[dayKey].confirmed++;
-          } else if (sentStatus === "Да" && signedStatus === "Нет") {
             dailyStats[dayKey].sent++;
             dailyStats[dayKey].pending++;
           } else if (sentStatus === "Да") {
+            sent++;
+            employeeStats[key].sent++;
             dailyStats[dayKey].sent++;
           }
         }
@@ -441,7 +431,7 @@ function renderEmpBars(empPending){
 
 function renderEmployeeTable(stats){
   const entries = Object.entries(stats)
-    .sort((a,b)=>(b[1].pending-a[1].pending) || (b[1].sent-a[1].sent))
+    .sort((a,b) => (b[1].pending-a[1].pending) || (b[1].sent-a[1].sent))
     .slice(0,20);
 
   document.getElementById("employeeBody").innerHTML = entries.map(([name,s]) => {
@@ -460,7 +450,7 @@ function renderEmployeeTable(stats){
 function renderAttention(stats){
   const entries = Object.entries(stats)
     .filter(([_,s]) => s.pending > 0)
-    .sort((a,b)=>b[1].pending-a[1].pending)
+    .sort((a,b) => b[1].pending-a[1].pending)
     .slice(0,10);
 
   document.getElementById("attentionList").innerHTML = entries.map(([name,s]) => `
@@ -473,18 +463,20 @@ function renderAttention(stats){
 
 let dailyChart;
 function renderDailyChart(stats){
-  const entries = Object.entries(stats).sort((a,b)=>a[0].localeCompare(b[0]));
+  const entries = Object.entries(stats).sort((a,b) => a[0].localeCompare(b[0]));
   const labels = entries.map(([d]) => {
     const p = d.split("-");
     return `${p[2]}.${p[1]}`;
   });
-  const sent = entries.map(([_,s])=>s.sent);
-  const confirmed = entries.map(([_,s])=>s.confirmed);
-  const pending = entries.map(([_,s])=>s.pending);
-  const rejected = entries.map(([_,s])=>s.rejected);
+
+  const sent = entries.map(([_,s]) => s.sent);
+  const confirmed = entries.map(([_,s]) => s.confirmed);
+  const pending = entries.map(([_,s]) => s.pending);
+  const rejected = entries.map(([_,s]) => s.rejected);
 
   const ctx = document.getElementById("dailyChart");
   if (dailyChart) dailyChart.destroy();
+
   dailyChart = new Chart(ctx, {
     type:"line",
     data:{
@@ -498,10 +490,12 @@ function renderDailyChart(stats){
     },
     options:{
       responsive:true,
-      plugins:{legend:{position:"bottom",labels:{color:"#eef1f8",boxWidth:10,font:{size:12}}}},
+      plugins:{
+        legend:{position:"bottom",labels:{color:"#eef1f8",boxWidth:10,font:{size:12}}}
+      },
       scales:{
-        x:{ticks:{color:"#8b93a8"},grid:{color:"rgba(139,147,168,.08)"}},
-        y:{beginAtZero:true,ticks:{color:"#8b93a8"},grid:{color:"rgba(139,147,168,.08)"}}
+        x:{ticks:{color:"#8b93a8"}},
+        y:{beginAtZero:true,ticks:{color:"#8b93a8"}}
       }
     }
   });
