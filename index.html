@@ -47,7 +47,7 @@
   .pill.no{background:rgba(226,83,77,.15);color:var(--red);}
   .pill.nm{background:rgba(139,111,240,.15);color:var(--purple);}
   .barrow{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
-  .barrow .name{width:120px;font-size:13px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .barrow .name{width:170px;font-size:13px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .barrow .track{flex:1;height:8px;background:var(--panel2);border-radius:4px;overflow:hidden;}
   .barrow .fill{height:100%;background:var(--amber);}
   .barrow .num{width:26px;text-align:right;font-size:12px;color:var(--text2);}
@@ -58,8 +58,8 @@
 
 <div id="loginScreen">
   <div class="brand">📊 <span>ЭСФ</span> Дашборд</div>
-  <p>Давом этиш учун Google хисобингиз билан киринг. Факат Google Sheets'ингизга кириш хукуки бор аккаунт маьлумотни куради.</p>
-  <button class="btn" id="loginBtn">Google билан кириш</button>
+  <p>Для продолжения войдите через аккаунт Google. Данные увидит только аккаунт, у которого есть доступ к Google Sheets.</p>
+  <button class="btn" id="loginBtn">Войти через Google</button>
   <div id="err"></div>
 </div>
 
@@ -77,27 +77,35 @@
         <div id="dateLabel"></div>
       </div>
       <div>
-        <button class="btn secondary" id="refreshBtn">↻ Янгилаш</button>
+        <button class="btn secondary" id="refreshBtn">↻ Обновить</button>
       </div>
     </div>
 
     <div class="cards" id="cards"></div>
 
+    <div class="panel" style="margin-bottom:20px;">
+      <h3>По компаниям</h3>
+      <table>
+        <thead><tr><th>Компания</th><th>Отправлено</th><th>Подтверждено</th><th>Ожидает</th><th>Отказано / Не моё</th><th>%</th></tr></thead>
+        <tbody id="companyBody"></tbody>
+      </table>
+    </div>
+
     <div class="grid2">
       <div class="panel">
-        <h3>Статуслар</h3>
+        <h3>Статусы</h3>
         <canvas id="donut" height="200"></canvas>
       </div>
       <div class="panel">
-        <h3>Ходимлар буйича кутилаётган</h3>
+        <h3>По сотрудникам (ожидают)</h3>
         <div id="empBars"></div>
       </div>
     </div>
 
     <div class="panel">
-      <h3>Сунгги 20 та амал</h3>
+      <h3>Последние 20 действий</h3>
       <table>
-        <thead><tr><th>Вакт</th><th>Фактура</th><th>Контрагент</th><th>Ходим</th><th>Статус</th></tr></thead>
+        <thead><tr><th>Время</th><th>Фактура</th><th>Контрагент</th><th>Сотрудник</th><th>Статус</th></tr></thead>
         <tbody id="logsBody"></tbody>
       </table>
     </div>
@@ -128,7 +136,7 @@ function initGoogle(){
     client_id: CLIENT_ID,
     scope: SCOPES,
     callback: (resp) => {
-      if (resp.error){ showErr("Кириш рад этилди: " + resp.error); return; }
+      if (resp.error){ showErr("Вход отклонён: " + resp.error); return; }
       accessToken = resp.access_token;
       document.getElementById("loginScreen").classList.add("hidden");
       document.getElementById("app").classList.remove("hidden");
@@ -169,33 +177,45 @@ async function loadAll(){
   try{
     let totalSent=0, totalConfirmed=0, totalPending=0, totalRejected=0, totalNotMine=0;
     const empPending = {};
+    const byCompany = [];
 
     for (const sheetName of MAIN_SHEETS){
       const rows = await fetchRange(sheetName);
-      if (rows.length < 2) continue;
-      const map = colMap(rows[0]);
-      const idxSent = map["Отправлено"];
-      const idxSigned = map["Подписано"];
-      const idxResp = map["ответственный"];
+      let sent=0, confirmed=0, pending=0, rejected=0, notMine=0;
 
-      for (let i=1;i<rows.length;i++){
-        const r = rows[i];
-        const sent = (r[idxSent]||"").trim();
-        const status = (r[idxSigned]||"").trim();
-        if (sent !== "Да") continue;
-        totalSent++;
-        if (status === "К подписи") totalConfirmed++;
-        else if (status === "Отменено") totalRejected++;
-        else if (status === "Не моё") totalNotMine++;
-        else {
-          totalPending++;
-          const resp = (r[idxResp]||"Номаьлум").trim();
-          empPending[resp] = (empPending[resp]||0) + 1;
+      if (rows.length >= 2){
+        const map = colMap(rows[0]);
+        const idxSent = map["Отправлено"];
+        const idxSigned = map["Подписано"];
+        const idxResp = map["ответственный"];
+        const idxDept = map["Подразделение"];
+
+        for (let i=1;i<rows.length;i++){
+          const r = rows[i];
+          const s = (r[idxSent]||"").trim();
+          const status = (r[idxSigned]||"").trim();
+          if (s !== "Да") continue;
+          sent++;
+          if (status === "К подписи") confirmed++;
+          else if (status === "Отменено") rejected++;
+          else if (status === "Не моё") notMine++;
+          else {
+            pending++;
+            const respName = (r[idxResp]||"Неизвестно").trim();
+            const dept = idxDept !== undefined ? (r[idxDept]||"").trim() : "";
+            const key = dept ? `${respName} (${dept})` : respName;
+            empPending[key] = (empPending[key]||0) + 1;
+          }
         }
       }
+
+      byCompany.push({ name: sheetName, sent, confirmed, pending, rejected: rejected+notMine });
+      totalSent += sent; totalConfirmed += confirmed; totalPending += pending;
+      totalRejected += rejected; totalNotMine += notMine;
     }
 
     renderCards(totalSent, totalConfirmed, totalPending, totalRejected, totalNotMine);
+    renderCompanyTable(byCompany);
     renderDonut(totalConfirmed, totalPending, totalRejected, totalNotMine);
     renderEmpBars(empPending);
 
@@ -203,18 +223,36 @@ async function loadAll(){
     renderLogs(logRows);
 
   } catch(e){
-    showErr("Хатолик: " + e.message + "\n\nSheet номлари ва CLIENT_ID/SPREADSHEET_ID тугрилигини текширинг.");
+    showErr("Ошибка: " + e.message + "\n\nПроверьте названия листов и CLIENT_ID/SPREADSHEET_ID.");
     console.error(e);
   }
+}
+
+function fmt(n){ return n.toLocaleString("ru-RU"); }
+
+function renderCompanyTable(byCompany){
+  document.getElementById("companyBody").innerHTML = byCompany.map(c => {
+    const pct = c.sent ? Math.round((c.confirmed/c.sent)*100) : 0;
+    return `
+      <tr>
+        <td>${c.name}</td>
+        <td>${fmt(c.sent)}</td>
+        <td style="color:var(--green)">${fmt(c.confirmed)}</td>
+        <td style="color:var(--amber)">${fmt(c.pending)}</td>
+        <td style="color:var(--red)">${fmt(c.rejected)}</td>
+        <td>${pct}%</td>
+      </tr>
+    `;
+  }).join("") || `<tr><td colspan="6" style="color:var(--text2)">Нет данных</td></tr>`;
 }
 
 function renderCards(sent, confirmed, pending, rejected, notMine){
   const pct = sent ? Math.round((confirmed/sent)*100) : 0;
   document.getElementById("cards").innerHTML = `
-    <div class="card"><div class="label">Юборилган</div><div class="value">${sent}</div></div>
-    <div class="card"><div class="label">Тасдикланган</div><div class="value" style="color:var(--green)">${confirmed}</div><div class="sub">${pct}%</div></div>
-    <div class="card"><div class="label">Кутилаётган</div><div class="value" style="color:var(--amber)">${pending}</div></div>
-    <div class="card"><div class="label">Рад / Не моё</div><div class="value" style="color:var(--red)">${rejected+notMine}</div></div>
+    <div class="card"><div class="label">Отправлено</div><div class="value">${fmt(sent)}</div></div>
+    <div class="card"><div class="label">Подтверждено</div><div class="value" style="color:var(--green)">${fmt(confirmed)}</div><div class="sub">${pct}%</div></div>
+    <div class="card"><div class="label">Ожидает</div><div class="value" style="color:var(--amber)">${fmt(pending)}</div></div>
+    <div class="card"><div class="label">Отказано / Не моё</div><div class="value" style="color:var(--red)">${fmt(rejected+notMine)}</div></div>
   `;
 }
 
@@ -226,7 +264,7 @@ function renderDonut(confirmed, pending, rejected, notMine){
   donutChart = new Chart(ctx, {
     type: "doughnut",
     data: {
-      labels: ["Тасдикланган","Кутилаётган","Рад этилган","Не моё"],
+      labels: ["Подтверждено","Ожидает","Отказано","Не моё"],
       datasets: [{ data, backgroundColor: ["#3bc47a","#f2b134","#e2534d","#8b6ff0"], borderWidth:0 }]
     },
     options: {
@@ -244,13 +282,13 @@ function renderEmpBars(empPending){
       <div class="track"><div class="fill" style="width:${(count/max)*100}%"></div></div>
       <div class="num">${count}</div>
     </div>
-  `).join("") || `<div style="color:var(--text2);font-size:13px">Кутилаётган фактура йук</div>`;
+  `).join("") || `<div style="color:var(--text2);font-size:13px">Нет ожидающих фактур</div>`;
 }
 
 function statusPill(status){
   const s = (status||"").toLowerCase();
-  if (s.includes("approved")) return `<span class="pill ok">Тасдикланди</span>`;
-  if (s.includes("reject")) return `<span class="pill no">Рад этилди</span>`;
+  if (s.includes("approved")) return `<span class="pill ok">Подтверждено</span>`;
+  if (s.includes("reject")) return `<span class="pill no">Отказано</span>`;
   if (s.includes("not_mine")) return `<span class="pill nm">Не моё</span>`;
   return `<span class="pill wait">${status||"-"}</span>`;
 }
@@ -265,7 +303,7 @@ function renderLogs(rows){
       <td>${r[1]||""}</td>
       <td>${statusPill(r[4])}</td>
     </tr>
-  `).join("") || `<tr><td colspan="5" style="color:var(--text2)">Маьлумот йук</td></tr>`;
+  `).join("") || `<tr><td colspan="5" style="color:var(--text2)">Нет данных</td></tr>`;
 }
 </script>
 </body>
