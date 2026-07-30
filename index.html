@@ -52,6 +52,14 @@
   .barrow .fill{height:100%;background:var(--amber);}
   .barrow .num{width:26px;text-align:right;font-size:12px;color:var(--text2);}
   #err{color:var(--red);font-size:13px;margin-top:10px;white-space:pre-wrap;}
+
+  @media(max-width:900px){.grid2{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)}}
+  @media print{
+    body{background:#fff;color:#111}
+    .sidebar,#loginScreen,.topbar button,.btn,#searchInput,#statusFilter,#ageFilter{display:none!important}
+    .main{max-width:none;padding:10px}
+    .panel,.card{background:#fff;color:#111;border:1px solid #ccc}
+  }
 </style>
 </head>
 <body>
@@ -126,6 +134,70 @@
     </div>
 
     <div class="cards" id="cards"></div>
+    
+    <div class="panel" style="margin-bottom:20px;">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <button class="btn" id="exportCsvBtn">📥 Скачать Excel</button>
+        <button class="btn secondary" id="printBtn">🖨 Печать отчёта</button>
+        <span id="resultInfo" style="font-size:12px;color:var(--text2);"></span>
+      </div>
+    </div>
+
+    <div class="grid2" style="margin-bottom:20px;">
+      <div class="panel">
+        <h3>🏢 TOP-10 контрагентов</h3>
+        <div id="counterpartyList"></div>
+      </div>
+      <div class="panel">
+        <h3>📅 Ойма-ой динамика</h3>
+        <canvas id="monthlyChart" height="150"></canvas>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:20px;">
+      <h3>👤 Профили сотрудников</h3>
+      <div id="employeeProfiles"></div>
+    </div>
+
+<div id="advancedAnalytics" style="margin-bottom:20px;">
+      <div class="grid2" style="margin-bottom:14px;">
+        <div class="panel">
+          <h3>👥 Рейтинг сотрудников</h3>
+          <div style="overflow:auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Сотрудник</th><th>Отправлено</th><th>Подтверждено</th>
+                  <th>Ожидает</th><th>Отказано</th><th>%</th>
+                </tr>
+              </thead>
+              <tbody id="employeeBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>🚨 Требует внимания</h3>
+          <div id="attentionList"></div>
+        </div>
+      </div>
+
+      <div class="grid2" style="margin-bottom:14px;">
+        <div class="panel">
+          <h3>⏱ Просрочка ожидающих</h3>
+          <div id="agingStats"></div>
+        </div>
+        <div class="panel">
+          <h3>🔴 Критические ЭСФ — 7+ дней</h3>
+          <div id="criticalList"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>📈 Динамика по дням</h3>
+        <canvas id="dailyChart" height="100"></canvas>
+      </div>
+    </div>
+
 
     <div class="grid2" style="margin-bottom:20px;">
       <div class="panel">
@@ -207,6 +279,7 @@ let tokenClient = null;
 let selectedCompany = "";
 let allInvoiceRows = [];
 let filteredInvoiceRows = [];
+let currentDetailRows = [];
 
 function buildSidebar(){
   const nav = document.getElementById("navList");
@@ -257,7 +330,7 @@ document.getElementById("allTimeBtn").onclick = () => {
   loadAll();
 };
 
-// Sahifa ochilganda — standart filtr: shu oy
+// При открытии страницы — стандартный фильтр: текущий месяц
 (function setDefaultDates(){
   const now = new Date();
   const first = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -357,7 +430,7 @@ async function loadAll(){
             signedStatus === "Отменено" ||
             prosStatus === "Отменено";
 
-          const respName = (r[idxResp]||"Неизвестно").trim();
+          const respName = (idxResp !== undefined ? (r[idxResp]||"Неизвестно") : "Неизвестно").trim();
           const dept = idxDept !== undefined ? (r[idxDept]||"").trim() : "";
           const key = dept ? `${respName} (${dept})` : respName;
 
@@ -401,7 +474,7 @@ async function loadAll(){
     }
 
     document.getElementById("filterInfo").textContent =
-      skippedNoDate ? `Санаси аникланмаган ${fmt(skippedNoDate)} катор хисобга олинмади` : "";
+      skippedNoDate ? `Санаси не определена ${fmt(skippedNoDate)} строк не учтено` : "";
 
     renderCards(totalSent, totalConfirmed, totalPending, totalRejected, 0);
     renderCompanyTable(byCompany);
@@ -411,7 +484,12 @@ async function loadAll(){
     renderAttention(employeeStats);
     renderDailyChart(dailyStats);
     renderAgingAndCritical(allInvoiceRows);
+    renderCounterparties(allInvoiceRows);
+    renderEmployeeProfiles(allInvoiceRows);
+    renderMonthlyChart(allInvoiceRows);
+    currentDetailRows = allInvoiceRows.slice();
     setupSearch();
+    setupExportAndPrint();
 
     const logRows = await fetchRange(LOG_SHEET);
     renderLogs(logRows);
@@ -622,26 +700,165 @@ function setupSearch(){
   search.dataset.ready="1";
 
   const apply=()=>{
-    const q=(search.value||"").toLowerCase().trim();
-    const st=status.value, ag=age.value;
-    filteredInvoiceRows=allInvoiceRows.filter(item=>{
-      const r=item.row,m=item.map;
-      const inv=m["СЧЁТ-ФАКТУРА"]!==undefined?(r[m["СЧЁТ-ФАКТУРА"]]||""):"";
-      const resp=m["ответственный"]!==undefined?(r[m["ответственный"]]||""):"";
-      const counter=m["Контрагент"]!==undefined?(r[m["Контрагент"]]||""):"";
-      const hay=(inv+" "+resp+" "+counter).toLowerCase();
-      const okQ=!q || hay.includes(q);
-      const okS=!st || getRowStatus(item)===st;
-      const days=daysOld(inv);
-      const okA=!ag || ageBucket(days)===ag;
-      return okQ && okS && okA;
-    });
+    applyDetailFilters();
+    filteredInvoiceRows=currentDetailRows.slice();
   };
 
   search.oninput=apply;
   status.onchange=apply;
   age.onchange=apply;
   clear.onclick=()=>{search.value="";status.value="";age.value="";apply();};
+}
+
+
+function getField(item, name){
+  const idx=item.map[name];
+  return idx===undefined ? "" : (item.row[idx]||"").trim();
+}
+
+function renderCounterparties(items){
+  const counts={};
+  items.forEach(item=>{
+    const c=getField(item,"Контрагент") || "Не указан";
+    counts[c]=(counts[c]||0)+1;
+  });
+  const arr=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  document.getElementById("counterpartyList").innerHTML =
+    arr.map(([name,n],i)=>`
+      <div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border)">
+        <span>${i+1}. ${name}</span><b>${fmt(n)}</b>
+      </div>`).join("") ||
+    `<div style="color:var(--text2)">Нет данных</div>`;
+}
+
+function renderEmployeeProfiles(items){
+  const stats={};
+  items.forEach(item=>{
+    const name=getField(item,"ответственный") || "Неизвестно";
+    if(!stats[name]) stats[name]={sent:0,confirmed:0,pending:0,rejected:0};
+    const st=getRowStatus(item);
+    if(st==="Отказано") stats[name].rejected++;
+    else if(st==="Подтверждено"){stats[name].sent++;stats[name].confirmed++;}
+    else if(st==="Ожидает"){stats[name].sent++;stats[name].pending++;}
+    else if(st==="Отправлено") stats[name].sent++;
+  });
+
+  const arr=Object.entries(stats).sort((a,b)=>b[1].sent-a[1].sent);
+  document.getElementById("employeeProfiles").innerHTML =
+    arr.map(([name,s])=>{
+      const pct=s.sent?Math.round(s.confirmed/s.sent*100):0;
+      return `<div style="display:grid;grid-template-columns:1.5fr repeat(5,1fr);gap:8px;padding:9px 0;border-bottom:1px solid var(--border);font-size:12px">
+        <b>${name}</b><span>Всего: ${fmt(s.sent)}</span>
+        <span style="color:var(--green)">Подтв.: ${fmt(s.confirmed)}</span>
+        <span style="color:var(--amber)">Ожид.: ${fmt(s.pending)}</span>
+        <span style="color:var(--red)">Отказ.: ${fmt(s.rejected)}</span>
+        <b>${pct}%</b>
+      </div>`;
+    }).join("") || `<div style="color:var(--text2)">Нет данных</div>`;
+}
+
+let monthlyChart;
+function renderMonthlyChart(items){
+  const m={};
+  items.forEach(item=>{
+    const inv=getField(item,"СЧЁТ-ФАКТУРА");
+    const d=extractDate(inv);
+    if(!d) return;
+    const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+    if(!m[key]) m[key]={sent:0,confirmed:0,pending:0,rejected:0};
+    const st=getRowStatus(item);
+    if(st==="Отказано") m[key].rejected++;
+    else if(st==="Подтверждено"){m[key].sent++;m[key].confirmed++;}
+    else if(st==="Ожидает"){m[key].sent++;m[key].pending++;}
+    else if(st==="Отправлено") m[key].sent++;
+  });
+
+  const entries=Object.entries(m).sort((a,b)=>a[0].localeCompare(b[0]));
+  const labels=entries.map(([k])=>{
+    const [y,mo]=k.split("-");
+    return `${mo}.${y}`;
+  });
+
+  if(monthlyChart) monthlyChart.destroy();
+  monthlyChart=new Chart(document.getElementById("monthlyChart"),{
+    type:"bar",
+    data:{
+      labels,
+      datasets:[
+        {label:"Отправлено",data:entries.map(x=>x[1].sent),borderWidth:1},
+        {label:"Подтверждено",data:entries.map(x=>x[1].confirmed),borderWidth:1},
+        {label:"Ожидает",data:entries.map(x=>x[1].pending),borderWidth:1},
+        {label:"Отказано",data:entries.map(x=>x[1].rejected),borderWidth:1}
+      ]
+    },
+    options:{
+      responsive:true,
+      plugins:{legend:{position:"bottom",labels:{color:"#eef1f8",boxWidth:10,font:{size:11}}}},
+      scales:{x:{ticks:{color:"#8b93a8"}},y:{beginAtZero:true,ticks:{color:"#8b93a8"}}}
+    }
+  });
+}
+
+function applyDetailFilters(){
+  const search=document.getElementById("searchInput");
+  const status=document.getElementById("statusFilter");
+  const age=document.getElementById("ageFilter");
+  if(!search) return;
+
+  const q=(search.value||"").toLowerCase().trim();
+  const st=status.value, ag=age.value;
+
+  currentDetailRows=allInvoiceRows.filter(item=>{
+    const inv=getField(item,"СЧЁТ-ФАКТУРА");
+    const resp=getField(item,"ответственный");
+    const counter=getField(item,"Контрагент");
+    const hay=(inv+" "+resp+" "+counter).toLowerCase();
+    const days=daysOld(inv);
+    return (!q || hay.includes(q))
+      && (!st || getRowStatus(item)===st)
+      && (!ag || ageBucket(days)===ag);
+  });
+
+  document.getElementById("resultInfo").textContent =
+    `Найдено: ${fmt(currentDetailRows.length)}`;
+}
+
+function setupExportAndPrint(){
+  const exportBtn=document.getElementById("exportCsvBtn");
+  const printBtn=document.getElementById("printBtn");
+
+  exportBtn.onclick=()=>{
+    const rows=currentDetailRows.length ? currentDetailRows : allInvoiceRows;
+    const header=["Компания","Счёт-фактура","Контрагент","Ответственный","Подразделение","Статус","Дней"];
+    const data=[header];
+
+    rows.forEach(item=>{
+      const inv=getField(item,"СЧЁТ-ФАКТУРА");
+      data.push([
+        item.sheetName,
+        inv,
+        getField(item,"Контрагент"),
+        getField(item,"ответственный"),
+        getField(item,"Подразделение"),
+        getRowStatus(item),
+        daysOld(inv) ?? ""
+      ]);
+    });
+
+    const csv=data.map(row=>row.map(v=>{
+      const s=String(v).replace(/"/g,'""');
+      return `"${s}"`;
+    }).join(";")).join("\r\n");
+
+    const blob=new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"});
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download="ЭСФ_отчет.csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  printBtn.onclick=()=>window.print();
 }
 
 function statusPill(status){
