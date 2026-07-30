@@ -60,6 +60,19 @@
     .main{max-width:none;padding:10px}
     .panel,.card{background:#fff;color:#111;border:1px solid #ccc}
   }
+
+  /* Компактные длинные списки: максимум 4 строки */
+  .collapsible-list { position:relative; }
+  .collapsible-list.collapsed > .collapse-row:nth-child(n+5) { display:none !important; }
+  .collapse-toggle {
+    display:block; width:100%; margin-top:10px; padding:8px 12px;
+    border:1px solid var(--border); border-radius:8px;
+    background:var(--panel2); color:var(--text); cursor:pointer;
+    font-size:12px; text-align:center;
+  }
+  .collapse-toggle:hover { filter:brightness(1.08); }
+  .long-text { max-width:360px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; }
+  .long-text.expanded { white-space:normal; overflow:visible; }
 </style>
 </head>
 <body>
@@ -149,7 +162,7 @@
         <div id="counterpartyList"></div>
       </div>
       <div class="panel">
-        <h3>📅 Ойма-ой динамика</h3>
+        <h3>📅 Динамика по месяцам</h3>
         <canvas id="monthlyChart" height="150"></canvas>
       </div>
     </div>
@@ -474,7 +487,7 @@ async function loadAll(){
     }
 
     document.getElementById("filterInfo").textContent =
-      skippedNoDate ? `Санаси не определена ${fmt(skippedNoDate)} строк не учтено` : "";
+      skippedNoDate ? `Дата не определена ${fmt(skippedNoDate)} строк не учтено` : "";
 
     renderCards(totalSent, totalConfirmed, totalPending, totalRejected, 0);
     renderCompanyTable(byCompany);
@@ -490,6 +503,7 @@ async function loadAll(){
     currentDetailRows = allInvoiceRows.slice();
     setupSearch();
     setupExportAndPrint();
+    initCollapsibles(document);
 
     const logRows = await fetchRange(LOG_SHEET);
     renderLogs(logRows);
@@ -582,12 +596,16 @@ function renderAttention(stats){
     .sort((a,b) => b[1].pending-a[1].pending)
     .slice(0,10);
 
-  document.getElementById("attentionList").innerHTML = entries.map(([name,s]) => `
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);">
-      <span style="font-size:13px;max-width:78%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${name}</span>
+  const rows = entries.map(([name,s]) => `
+    <div class="collapse-row" style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);">
+      <span class="long-text" title="${name}" style="font-size:13px;max-width:78%;">${name}</span>
       <span class="pill wait">${fmt(s.pending)}</span>
     </div>
-  `).join("") || `<div style="color:var(--text2);font-size:13px">Нет проблемных фактур</div>`;
+  `).join("");
+  document.getElementById("attentionList").innerHTML =
+    rows ? `<div class="collapsible-list collapsed">${rows}<button class="collapse-toggle" type="button">Показать ещё</button></div>`
+    : `<div style="color:var(--text2);font-size:13px">Нет проблемных фактур</div>`;
+  initCollapsibles(document.getElementById("attentionList"));
 }
 
 let dailyChart;
@@ -680,15 +698,18 @@ function renderAgingAndCritical(items){
       </div>`).join("");
 
   critical.sort((a,b)=>b.days-a.days);
-  document.getElementById("criticalList").innerHTML =
-    critical.slice(0,10).map(({item,days})=>{
+  const rows = critical.slice(0,10).map(({item,days})=>{
       const r=item.row,m=item.map;
       const inv=r[m["СЧЁТ-ФАКТУРА"]]||"-";
       const resp=m["ответственный"]!==undefined?(r[m["ответственный"]]||"Неизвестно"):"Неизвестно";
-      return `<div style="padding:9px 0;border-bottom:1px solid var(--border);font-size:12px">
+      return `<div class="collapse-row" style="padding:9px 0;border-bottom:1px solid var(--border);font-size:12px">
         <b>${inv}</b><br><span style="color:var(--text2)">${resp} · <span style="color:var(--red)">${days} дн.</span></span>
       </div>`;
-    }).join("") || `<div style="color:var(--text2);font-size:13px">Критических ЭСФ нет</div>`;
+    }).join("");
+  document.getElementById("criticalList").innerHTML =
+    rows ? `<div class="collapsible-list collapsed">${rows}<button class="collapse-toggle" type="button">Показать ещё</button></div>`
+    : `<div style="color:var(--text2);font-size:13px">Критических ЭСФ нет</div>`;
+  initCollapsibles(document.getElementById("criticalList"));
 }
 
 function setupSearch(){
@@ -723,12 +744,15 @@ function renderCounterparties(items){
     counts[c]=(counts[c]||0)+1;
   });
   const arr=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const rows = arr.map(([name,n],i)=>`
+      <div class="collapse-row" style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border)">
+        <span class="long-text" title="${name}">${i+1}. ${name}</span><b>${fmt(n)}</b>
+      </div>`).join("");
   document.getElementById("counterpartyList").innerHTML =
-    arr.map(([name,n],i)=>`
-      <div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border)">
-        <span>${i+1}. ${name}</span><b>${fmt(n)}</b>
-      </div>`).join("") ||
-    `<div style="color:var(--text2)">Нет данных</div>`;
+    rows ? `<div class="collapsible-list collapsed" data-limit="4">${rows}
+      <button class="collapse-toggle" type="button">Показать ещё</button></div>`
+    : `<div style="color:var(--text2)">Нет данных</div>`;
+  initCollapsibles(document.getElementById("counterpartyList"));
 }
 
 function renderEmployeeProfiles(items){
@@ -744,17 +768,20 @@ function renderEmployeeProfiles(items){
   });
 
   const arr=Object.entries(stats).sort((a,b)=>b[1].sent-a[1].sent);
-  document.getElementById("employeeProfiles").innerHTML =
-    arr.map(([name,s])=>{
+  const rows = arr.map(([name,s])=>{
       const pct=s.sent?Math.round(s.confirmed/s.sent*100):0;
-      return `<div style="display:grid;grid-template-columns:1.5fr repeat(5,1fr);gap:8px;padding:9px 0;border-bottom:1px solid var(--border);font-size:12px">
-        <b>${name}</b><span>Всего: ${fmt(s.sent)}</span>
+      return `<div class="collapse-row" style="display:grid;grid-template-columns:1.5fr repeat(5,1fr);gap:8px;padding:9px 0;border-bottom:1px solid var(--border);font-size:12px">
+        <b class="long-text" title="${name}">${name}</b><span>Всего: ${fmt(s.sent)}</span>
         <span style="color:var(--green)">Подтв.: ${fmt(s.confirmed)}</span>
         <span style="color:var(--amber)">Ожид.: ${fmt(s.pending)}</span>
         <span style="color:var(--red)">Отказ.: ${fmt(s.rejected)}</span>
         <b>${pct}%</b>
       </div>`;
-    }).join("") || `<div style="color:var(--text2)">Нет данных</div>`;
+    }).join("");
+  document.getElementById("employeeProfiles").innerHTML =
+    rows ? `<div class="collapsible-list collapsed">${rows}<button class="collapse-toggle" type="button">Показать ещё</button></div>`
+    : `<div style="color:var(--text2)">Нет данных</div>`;
+  initCollapsibles(document.getElementById("employeeProfiles"));
 }
 
 let monthlyChart;
@@ -859,6 +886,20 @@ function setupExportAndPrint(){
   };
 
   printBtn.onclick=()=>window.print();
+}
+
+
+function initCollapsibles(root){
+  if(!root) return;
+  root.querySelectorAll(".collapse-toggle").forEach(btn=>{
+    if(btn.dataset.ready) return;
+    btn.dataset.ready="1";
+    btn.onclick=()=>{
+      const box=btn.parentElement;
+      const collapsed=box.classList.toggle("collapsed");
+      btn.textContent=collapsed ? "Показать ещё" : "Свернуть";
+    };
+  });
 }
 
 function statusPill(status){
