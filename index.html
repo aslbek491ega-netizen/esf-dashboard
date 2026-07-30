@@ -18,7 +18,7 @@
   .sidebar{width:220px;background:var(--panel);border-right:1px solid var(--border);padding:20px 14px;flex-shrink:0;}
   .brand{font-weight:700;font-size:17px;margin-bottom:24px;display:flex;align-items:center;gap:8px;}
   .brand span{color:var(--accent);}
-  .nav a{display:block;padding:9px 12px;border-radius:8px;color:var(--text2);text-decoration:none;font-size:14px;margin-bottom:2px;}
+  .nav a{display:block;padding:9px 12px;border-radius:8px;color:var(--text2);text-decoration:none;font-size:13px;margin-bottom:2px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .nav a.active{background:var(--accent);color:#fff;}
   .main{flex:1;padding:24px 28px;max-width:1200px;}
   .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;}
@@ -66,14 +66,14 @@
 <div class="wrap hidden" id="app">
   <div class="sidebar">
     <div class="brand">📊 <span>ЭСФ</span> Дашборд</div>
-    <div class="nav">
-      <a class="active" href="#">Главная</a>
+    <div class="nav" id="navList">
+      <a class="active" href="#" data-company="">Главная</a>
     </div>
   </div>
   <div class="main">
     <div class="topbar">
       <div>
-        <h1>Дашборд</h1>
+        <h1 id="pageTitle">Дашборд</h1>
         <div id="dateLabel"></div>
       </div>
       <div>
@@ -145,6 +145,24 @@ const SCOPES = "https://www.googleapis.com/auth/spreadsheets.readonly";
 
 let accessToken = null;
 let tokenClient = null;
+let selectedCompany = "";
+
+function buildSidebar(){
+  const nav = document.getElementById("navList");
+  let html = `<a href="#" data-company="" class="${selectedCompany===""?"active":""}">Главная</a>`;
+  MAIN_SHEETS.forEach(name => {
+    html += `<a href="#" data-company="${name}" class="${selectedCompany===name?"active":""}">${name}</a>`;
+  });
+  nav.innerHTML = html;
+  nav.querySelectorAll("a").forEach(a => {
+    a.onclick = (e) => {
+      e.preventDefault();
+      selectedCompany = a.dataset.company;
+      buildSidebar();
+      loadAll();
+    };
+  });
+}
 
 function initGoogle(){
   tokenClient = google.accounts.oauth2.initTokenClient({
@@ -155,6 +173,7 @@ function initGoogle(){
       accessToken = resp.access_token;
       document.getElementById("loginScreen").classList.add("hidden");
       document.getElementById("app").classList.remove("hidden");
+      buildSidebar();
       loadAll();
     }
   });
@@ -229,7 +248,10 @@ async function loadAll(){
     const fromD = fromVal ? new Date(fromVal) : null;
     const toD = toVal ? new Date(toVal + "T23:59:59") : null;
 
-    for (const sheetName of MAIN_SHEETS){
+    const sheetsToProcess = selectedCompany ? [selectedCompany] : MAIN_SHEETS;
+    document.getElementById("pageTitle").textContent = selectedCompany || "Дашборд";
+
+    for (const sheetName of sheetsToProcess){
       const rows = await fetchRange(sheetName);
       let sent=0, confirmed=0, pending=0, rejected=0, notMine=0;
 
@@ -258,6 +280,7 @@ async function loadAll(){
           else if (status === "Отменено") rejected++;
           else if (status === "Не моё") notMine++;
           else {
+            // "Нет", буш, ёки бошка хар кандай белгиланмаган статус — Кутилаётган
             pending++;
             const respName = (r[idxResp]||"Неизвестно").trim();
             const dept = idxDept !== undefined ? (r[idxDept]||"").trim() : "";
