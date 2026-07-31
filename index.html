@@ -43,9 +43,9 @@
   .card .value{font-size:26px;font-weight:700;}
   .card .sub{font-size:12px;color:var(--text2);margin-top:4px;}
   .card .trend{font-size:12px;margin-top:4px;font-weight:600;}
-  .card .trend.up{color:var(--green);}
-  .card .trend.down{color:var(--red);}
-  .card .trend.flat{color:var(--text2);}
+  .card .trend .up{color:var(--green);}
+  .card .trend .down{color:var(--red);}
+  .card .trend .flat{color:var(--text2);}
   .grid2{display:grid;grid-template-columns:1fr 1.3fr;gap:14px;margin-bottom:20px;}
   .grid3{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
   .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px;}
@@ -280,7 +280,6 @@ let currentPeriodRows = [];     // танланган сана оралигид�
 let currentDetailRows = [];     // излаш/статус/просрочка филтридан утган каторлар
 let autoRefreshTimer = null;
 let companyChart, donutChart, dailyChart, monthlyChart;
-let prevPeriodTotals = null;    // тренд учун — утган давр курсаткичлари
 
 // =========================================
 // URL параметрларини укиш/ёзиш (филтрни ссылка билан улашиш)
@@ -528,6 +527,16 @@ async function loadAll(){
     const fromD = fromVal ? new Date(fromVal) : null;
     const toD = toVal ? new Date(toVal + "T23:59:59") : null;
 
+    // Хакикий "утган давр"ни хисоблаш — жорий давр билан бир хил
+    // узунликдаги, ундан ОЛДИНГИ вакт оралиги (масалан шу ой vs утган ой)
+    let prevFromD = null, prevToD = null;
+    if (fromD && toD){
+      const periodMs = toD.getTime() - fromD.getTime();
+      prevToD = new Date(fromD.getTime() - 1);
+      prevFromD = new Date(fromD.getTime() - periodMs - 1);
+    }
+    const prevTotals = {sent:0, confirmed:0, pending:0, rejected:0};
+
     const sheetsToProcess = selectedCompany ? [selectedCompany] : MAIN_SHEETS;
     document.getElementById("pageTitle").textContent = selectedCompany || "Дашборд";
 
@@ -570,13 +579,27 @@ async function loadAll(){
         if (deptVal) deptSet.add(deptVal);
 
         if (!invDate){ skippedNoDate++; continue; }
-        if (fromD && invDate < fromD) continue;
-        if (toD && invDate > toD) continue;
         if (selectedDept && deptVal !== selectedDept) continue;
+
+        const isCurrentPeriod = (!fromD || invDate >= fromD) && (!toD || invDate <= toD);
+        const isPrevPeriod = prevFromD && prevToD && invDate >= prevFromD && invDate <= prevToD;
+
+        if (!isCurrentPeriod && !isPrevPeriod) continue;
+
+        const status = getRowStatus(item);
+
+        // Утган давр (тренд солиштируви учун) — факат умумий сонлар
+        if (isPrevPeriod){
+          if (status === "Отказано") prevTotals.rejected++;
+          else if (status === "Подтверждено"){ prevTotals.sent++; prevTotals.confirmed++; }
+          else if (status === "Ожидает"){ prevTotals.sent++; prevTotals.pending++; }
+          else if (status === "Отправлено") prevTotals.sent++;
+        }
+
+        if (!isCurrentPeriod) continue;
 
         currentPeriodRows.push(item);
 
-        const status = getRowStatus(item);
         const amount = parseAmount(getField(item,"СУММАКОПЛАТЕ"));
         const contractor = getField(item,"Контрагент") || getSeller(item);
 
@@ -661,9 +684,9 @@ async function loadAll(){
     const logRows = await fetchRange(LOG_SHEET);
     renderLogs(logRows);
 
-    // Трендни сакланадиган ва Endi Solishtiradigan qilib qo'yish
-    if (prevPeriodTotals) updateTrend(totals, prevPeriodTotals);
-    prevPeriodTotals = totals;
+    // Хакикий утган давр билан солиштириш (сана оралиги танланган булсагина)
+    if (prevFromD && prevToD) updateTrend(totals, prevTotals);
+    else clearTrend();
 
   } catch(e){
     showErr("Ошибка: " + e.message + "\n\nПроверьте названия листов и CLIENT_ID/SPREADSHEET_ID.");
@@ -698,6 +721,13 @@ function updateTrend(cur, prev){
   Object.entries(map).forEach(([elId,key]) => {
     const el = document.getElementById(elId);
     if (el) el.innerHTML = trendHTML(cur[key], prev[key]);
+  });
+}
+
+function clearTrend(){
+  ["trendSent","trendConfirmed","trendPending","trendRejected"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = `<span class="flat" style="font-weight:400;">за весь период</span>`;
   });
 }
 
