@@ -491,7 +491,7 @@ function getRowStatus(item){
   const sent = m["Отправлено"]!==undefined ? (r[m["Отправлено"]]||"").trim() : "";
   const signed = m["Подписано"]!==undefined ? (r[m["Подписано"]]||"").trim() : "";
   const pros = m["Просажено"]!==undefined ? (r[m["Просажено"]]||"").trim() : "";
-  if (sent==="Отменено" || signed==="Отменено" || pros==="Отменено") return "Отказано";
+  if (signed==="Отменено" || pros==="Отменено") return "Отказано";
   if (sent==="Да" && signed==="Да") return "Подтверждено";
   if (sent==="Да" && signed==="Нет") return "Ожидает";
   if (sent==="Да") return "Отправлено";
