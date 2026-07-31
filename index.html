@@ -91,6 +91,22 @@
 #nmPage .filterPanel{background:var(--panel)}
 @media(max-width:900px){#nmPage .grid2{grid-template-columns:1fr}#nmPage .cards{grid-template-columns:repeat(2,1fr)}}
 </style>
+
+<style id="nm-v14-css">
+#nmPage .nm-list{max-height:none;}
+#nmPage .nm-list-row{display:flex;justify-content:space-between;gap:15px;padding:7px 0;border-bottom:1px solid var(--border);min-height:24px;align-items:center}
+#nmPage .nm-list-row:nth-child(n+11){display:none}
+#nmPage .nm-list-row.expanded{display:flex}
+#nmPage .nm-more{margin-top:10px;width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--panel2);color:var(--text);cursor:pointer}
+#nmPage .nm-detail{max-height:520px;overflow:auto}
+#nmPage .nm-detail table{font-size:12px}
+#nmPage .nm-detail th{position:sticky;top:0;background:var(--panel);z-index:2;padding:7px 8px}
+#nmPage .nm-detail td{padding:5px 7px;vertical-align:top}
+#nmPage .nm-detail tr.nm-group td{background:var(--panel2);font-weight:700;color:var(--text);border-top:2px solid var(--border);padding:8px}
+#nmPage .nm-detail tr.nm-item td:first-child{color:var(--text2)}
+#nmPage .nm-detail tr.nm-item:nth-child(odd) td{background:rgba(255,255,255,.015)}
+</style>
+
 </head>
 <body>
 
@@ -288,19 +304,19 @@
       <div class="panel">
         <h3>🏆 TOP-20 номенклатур по сумме</h3>
         <button class="collapse-toggle nmToggle" type="button" data-target="nmTopProducts">Свернуть</button>
-        <div id="nmTopProducts"></div>
+        <div id="nmTopProducts" class="nm-list"></div><button class="nm-more" type="button" data-list="nmTopProducts">Показать ещё 10</button>
       </div>
       <div class="panel">
         <h3>🏢 TOP-20 поставщиков по сумме</h3>
         <button class="collapse-toggle nmToggle" type="button" data-target="nmTopSuppliers">Свернуть</button>
-        <div id="nmTopSuppliers"></div>
+        <div id="nmTopSuppliers" class="nm-list"></div><button class="nm-more" type="button" data-list="nmTopSuppliers">Показать ещё 10</button>
       </div>
     </div>
 
     <div class="panel" style="margin-bottom:20px;">
       <h3>📋 Детализация по ЭСФ и номенклатуре</h3>
       <button class="collapse-toggle nmToggle" type="button" data-target="nmDetailWrap">Свернуть</button>
-      <div id="nmDetailWrap" style="overflow:auto;max-height:520px;">
+      <div id="nmDetailWrap" class="nm-detail">
         <table>
           <thead><tr><th>Дата</th><th>ЭСФ №</th><th>Поставщик</th><th>Покупатель</th><th>Номенклатура</th><th>ЕНКТУ</th><th>Ед.</th><th>Кол-во</th><th>Цена</th><th>Без НДС</th><th>НДС</th><th>С НДС</th></tr></thead>
           <tbody id="nmBody"></tbody>
@@ -1166,9 +1182,18 @@ function renderNomenclature(){
     ["Средняя сумма 1 ЭСФ",nmMoney(avg)]
   ].map(x=>`<div class="card"><div class="label">${x[0]}</div><div class="value">${typeof x[1]==='number'?fmt(x[1]):x[1]}</div></div>`).join("");
   const top=(obj)=>Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,20);
-  document.getElementById("nmTopProducts").innerHTML=top(prod).map((x,i)=>`<div style="display:flex;justify-content:space-between;gap:15px;padding:9px 0;border-bottom:1px solid var(--border)"><span class="long-text" title="${x[0]}">${i+1}. ${x[0]}</span><b>${nmMoney(x[1])}</b></div>`).join("")||`<div style="color:var(--text2)">Нет данных</div>`;
-  document.getElementById("nmTopSuppliers").innerHTML=top(supplier).map((x,i)=>`<div style="display:flex;justify-content:space-between;gap:15px;padding:9px 0;border-bottom:1px solid var(--border)"><span class="long-text" title="${x[0]}">${i+1}. ${x[0]}</span><b>${nmMoney(x[1])}</b></div>`).join("")||`<div style="color:var(--text2)">Нет данных</div>`;
-  document.getElementById("nmBody").innerHTML=items.map(x=>`<tr><td>${nmField(x,["Дата СФ","дата СФ","Дата","Дата обработки"])}</td><td>${nmField(x,["СФ №","СЧЁТ-ФАКТУРА"])}</td><td>${nmField(x,["Поставщик"])}</td><td>${nmField(x,["Покупатель"])}</td><td>${nmField(x,["Номенклатура","Наименование товара/услуги"])}</td><td>${nmField(x,["ЕНКТУ","Код ЕНКТУ"])}</td><td>${nmField(x,["Ед. изм.","Ед."])}</td><td>${nmField(x,["Количество","Кол-во","количество"])}</td><td>${nmField(x,["Цена","цена"])}</td><td>${nmField(x,["Стоимость без НДС","Сумма без НДС"])}</td><td>${nmField(x,["Сумма НДС","НДС"])}</td><td>${nmField(x,["Стоимость с НДС","Сумма с НДС"])}</td></tr>`).join("")||`<tr><td colspan="12" style="color:var(--text2)">Нет данных</td></tr>`;
+  document.getElementById("nmTopProducts").innerHTML=top(prod).map((x,i)=>`<div class="nm-list-row" data-rank="${i+1}"><span class="long-text" title="${x[0]}">${i+1}. ${x[0]}</span><b>${nmMoney(x[1])}</b></div>`).join("")||`<div style="color:var(--text2)">Нет данных</div>`;
+  document.getElementById("nmTopSuppliers").innerHTML=top(supplier).map((x,i)=>`<div class="nm-list-row" data-rank="${i+1}"><span class="long-text" title="${x[0]}">${i+1}. ${x[0]}</span><b>${nmMoney(x[1])}</b></div>`).join("")||`<div style="color:var(--text2)">Нет данных</div>`;
+  let detailHtml="", lastInv="";
+  items.forEach((x,idx)=>{
+    const inv=nmField(x,["СФ №","СЧЁТ-ФАКТУРА"])||"Без номера ЭСФ";
+    if(inv!==lastInv){
+      detailHtml+=`<tr class="nm-group"><td colspan="12">📄 ЭСФ № ${inv} · ${nmField(x,["Дата СФ","дата СФ","Дата"])} · ${nmField(x,["Поставщик"])}</td></tr>`;
+      lastInv=inv;
+    }
+    detailHtml+=`<tr class="nm-item"><td>${nmField(x,["Дата СФ","дата СФ","Дата","Дата обработки"])}</td><td>${inv}</td><td>${nmField(x,["Поставщик"])}</td><td>${nmField(x,["Покупатель"])}</td><td title="${nmField(x,["Номенклатура","Наименование товара/услуги"])}">${nmField(x,["Номенклатура","Наименование товара/услуги"])}</td><td>${nmField(x,["ЕНКТУ","Код ЕНКТУ"])}</td><td>${nmField(x,["Ед. изм.","Ед."])}</td><td>${nmField(x,["Количество","Кол-во","количество"])}</td><td>${nmField(x,["Цена","цена"])}</td><td>${nmField(x,["Стоимость без НДС","Сумма без НДС"])}</td><td>${nmField(x,["Сумма НДС","НДС"])}</td><td>${nmField(x,["Стоимость с НДС","Сумма с НДС"])}</td></tr>`;
+  });
+  document.getElementById("nmBody").innerHTML=detailHtml||`<tr><td colspan="12" style="color:var(--text2)">Нет данных</td></tr>`;
 }
 async function loadNomenclatureOnly(){
   document.getElementById("nmErr").textContent="Загрузка…";
@@ -1193,6 +1218,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.getElementById("nmTo").onchange=renderNomenclature;
   document.getElementById("nmClear").onclick=()=>{document.getElementById("nmSearch").value="";document.getElementById("nmFrom").value="";document.getElementById("nmTo").value="";renderNomenclature();};
   document.querySelectorAll("#nmPage .nmToggle").forEach(btn=>btn.onclick=()=>{const el=document.getElementById(btn.dataset.target); el.classList.toggle("hidden"); btn.textContent=el.classList.contains("hidden")?"Развернуть":"Свернуть";});
+  document.querySelectorAll("#nmPage .nm-more").forEach(btn=>btn.onclick=()=>{const list=document.getElementById(btn.dataset.list); const expanded=list.classList.toggle("expanded"); list.querySelectorAll(".nm-list-row").forEach((r,i)=>{if(i>=10) r.classList.toggle("expanded",expanded);}); btn.textContent=expanded?"Свернуть":"Показать ещё 10";});
 });
 </script>
 </body>
