@@ -492,9 +492,8 @@ function getRowStatus(item){
   const signed = m["Подписано"]!==undefined ? (r[m["Подписано"]]||"").trim() : "";
   const pros = m["Просажено"]!==undefined ? (r[m["Просажено"]]||"").trim() : "";
   if (signed==="Отменено" || pros==="Отменено") return "Отказано";
-  if (sent==="Да" && signed==="Да") return "Подтверждено";
-  if (sent==="Да" && signed==="Нет") return "Ожидает";
-  if (sent==="Да") return "Отправлено";
+  if (signed==="Да") return "Подтверждено";
+  if (sent==="Да" || sent==="Отменено") return "Ожидает";
   return "";
 }
 
@@ -590,10 +589,10 @@ async function loadAll(){
 
         // Утган давр (тренд солиштируви учун) — факат умумий сонлар
         if (isPrevPeriod){
-          if (status === "Отказано") prevTotals.rejected++;
-          else if (status === "Подтверждено"){ prevTotals.sent++; prevTotals.confirmed++; }
-          else if (status === "Ожидает"){ prevTotals.sent++; prevTotals.pending++; }
-          else if (status === "Отправлено") prevTotals.sent++;
+          if(status==="Подтверждено"||status==="Ожидает"||status==="Отказано") prevTotals.sent++;
+          if(status==="Подтверждено") prevTotals.confirmed++;
+          if(status==="Ожидает") prevTotals.pending++;
+          if(status==="Отказано") prevTotals.rejected++;
         }
 
         if (!isCurrentPeriod) continue;
