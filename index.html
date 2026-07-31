@@ -123,6 +123,10 @@
       </div>
       <button class="btn secondary" id="thisMonthBtn">Этот месяц</button>
       <button class="btn secondary" id="allTimeBtn">Всё время</button>
+      <div>
+        <label>Подразделение</label>
+        <select id="deptFilter"><option value="">Все подразделения</option></select>
+      </div>
       <button class="btn" id="applyFilterBtn">Применить</button>
       <span id="filterInfo" style="font-size:12px;color:var(--text2);"></span>
     </div>
@@ -169,11 +173,22 @@
       <div class="grid2" style="margin-bottom:0;">
         <div>
           <table>
-            <thead><tr><th>Компания</th><th>Отправлено</th><th>Подтв.</th><th>Ожидает</th><th>Отказано</th><th>%</th></tr></thead>
+            <thead><tr><th>Компания</th><th>Отправлено</th><th>Подтв.</th><th>Ожидает</th><th>Отказано</th><th>%</th><th>Сумма (ожидает)</th></tr></thead>
             <tbody id="companyBody"></tbody>
           </table>
         </div>
         <div><canvas id="companyChart" height="170"></canvas></div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="panel">
+        <h3>💰 Крупнейшие ожидающие ЭСФ</h3>
+        <div id="topAmountList"></div>
+      </div>
+      <div class="panel">
+        <h3>⚠️ Необычные суммы</h3>
+        <div id="anomalyList"></div>
       </div>
     </div>
 
@@ -193,7 +208,7 @@
         <h3>👥 Рейтинг сотрудников</h3>
         <div style="overflow:auto;max-height:360px;">
           <table>
-            <thead><tr><th>Сотрудник</th><th>Отпр.</th><th>Подтв.</th><th>Ожид.</th><th>Отказ.</th><th>%</th></tr></thead>
+            <thead><tr><th>Сотрудник</th><th>Отпр.</th><th>Подтв.</th><th>Ожид.</th><th>Отказ.</th><th>%</th><th>Сумма ожид.</th></tr></thead>
             <tbody id="employeeBody"></tbody>
           </table>
         </div>
@@ -353,6 +368,7 @@ document.getElementById("logoutBtn").onclick = () => {
 
 document.getElementById("refreshBtn").onclick = () => loadAll();
 document.getElementById("applyFilterBtn").onclick = () => loadAll();
+document.getElementById("deptFilter").onchange = () => loadAll();
 document.getElementById("thisMonthBtn").onclick = () => {
   const now = new Date();
   const first = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -400,6 +416,17 @@ function extractDate(invoiceText){
   if (!m) return null;
   const [, dd, mm, yyyy] = m;
   return new Date(`${yyyy}-${mm}-${dd}`);
+}
+
+function parseAmount(text){
+  if (!text) return 0;
+  const cleaned = String(text).replace(/[\s\u00A0]/g,"").replace(",", ".");
+  const n = parseFloat(cleaned);
+  return isNaN(n) ? 0 : n;
+}
+
+function fmtMoney(n){
+  return (n||0).toLocaleString("ru-RU", {maximumFractionDigits:0}) + " сум";
 }
 
 function daysOld(invoiceText){
@@ -508,14 +535,19 @@ async function loadAll(){
     const seenInvoiceIds = new Set();
     let duplicateCount = 0;
     const byCompany = [];
+    const deptSet = new Set();
+    const topPendingItems = [];
+    const sellerAgg = {};
+    const amountRows = [];
+    const selectedDept = document.getElementById("deptFilter").value;
 
     for (const sheetName of sheetsToProcess){
       const rows = await fetchRange(sheetName);
-      if (rows.length < 2){ byCompany.push({name:sheetName, sent:0, confirmed:0, pending:0, rejected:0}); continue; }
+      if (rows.length < 2){ byCompany.push({name:sheetName, sent:0, confirmed:0, pending:0, rejected:0, pendingSum:0}); continue; }
 
       const map = colMap(rows[0]);
       const idxInvoice = map["СЧЁТ-ФАКТУРА"];
-      let sent=0, confirmed=0, pending=0, rejected=0;
+      let sent=0, confirmed=0, pending=0, rejected=0, pendingSum=0;
 
       for (let i=1;i<rows.length;i++){
         const r = rows[i];
@@ -534,31 +566,55 @@ async function loadAll(){
           else seenInvoiceIds.add(dupKey);
         }
 
+        const deptVal = getField(item,"Подразделение");
+        if (deptVal) deptSet.add(deptVal);
+
         if (!invDate){ skippedNoDate++; continue; }
         if (fromD && invDate < fromD) continue;
         if (toD && invDate > toD) continue;
+        if (selectedDept && deptVal !== selectedDept) continue;
 
         currentPeriodRows.push(item);
 
         const status = getRowStatus(item);
+        const amount = parseAmount(getField(item,"СУММАКОПЛАТЕ"));
+        const contractor = getField(item,"Контрагент") || getSeller(item);
+
+        if (amount > 0){
+          amountRows.push({item, amount, seller:contractor});
+          if (contractor){
+            if (!sellerAgg[contractor]) sellerAgg[contractor] = {sum:0, count:0};
+            sellerAgg[contractor].sum += amount;
+            sellerAgg[contractor].count++;
+          }
+        }
+
         if (status === "Отказано") rejected++;
         else if (status === "Подтверждено"){ sent++; confirmed++; }
-        else if (status === "Ожидает"){ sent++; pending++; }
+        else if (status === "Ожидает"){
+          sent++; pending++; pendingSum += amount;
+          topPendingItems.push({item, amount, contractor});
+        }
         else if (status === "Отправлено") sent++;
       }
 
-      byCompany.push({ name: sheetName, sent, confirmed, pending, rejected });
+      byCompany.push({ name: sheetName, sent, confirmed, pending, rejected, pendingSum });
     }
+
+    buildDeptFilterOptions(deptSet, selectedDept);
 
     const totals = byCompany.reduce((a,c) => ({
       sent:a.sent+c.sent, confirmed:a.confirmed+c.confirmed,
-      pending:a.pending+c.pending, rejected:a.rejected+c.rejected
-    }), {sent:0,confirmed:0,pending:0,rejected:0});
+      pending:a.pending+c.pending, rejected:a.rejected+c.rejected,
+      pendingSum:(a.pendingSum||0)+(c.pendingSum||0)
+    }), {sent:0,confirmed:0,pending:0,rejected:0,pendingSum:0});
 
     renderCards(totals);
     renderCompanyTable(byCompany);
     renderCompanyChart(byCompany);
     renderDonut(totals);
+    renderTopAmounts(topPendingItems);
+    renderAnomalies(amountRows, sellerAgg);
 
     const empPending = {};
     const employeeStats = {};
@@ -567,8 +623,9 @@ async function loadAll(){
       const respName = getField(item,"ответственный") || "Неизвестно";
       const dept = getField(item,"Подразделение");
       const key = dept ? `${respName} (${dept})` : respName;
-      if (!employeeStats[key]) employeeStats[key] = {sent:0,confirmed:0,pending:0,rejected:0};
+      if (!employeeStats[key]) employeeStats[key] = {sent:0,confirmed:0,pending:0,rejected:0,pendingSum:0};
       const status = getRowStatus(item);
+      const amount = parseAmount(getField(item,"СУММАКОПЛАТЕ"));
       const invDate = extractDate(getField(item,"СЧЁТ-ФАКТУРА"));
       const dayKey = invDate ? invDate.toISOString().slice(0,10) : null;
       if (dayKey && !dailyStats[dayKey]) dailyStats[dayKey] = {sent:0,confirmed:0,pending:0,rejected:0};
@@ -580,7 +637,7 @@ async function loadAll(){
         employeeStats[key].sent++; employeeStats[key].confirmed++;
         if (dayKey){ dailyStats[dayKey].sent++; dailyStats[dayKey].confirmed++; }
       } else if (status === "Ожидает"){
-        employeeStats[key].sent++; employeeStats[key].pending++;
+        employeeStats[key].sent++; employeeStats[key].pending++; employeeStats[key].pendingSum += amount;
         empPending[key] = (empPending[key]||0) + 1;
         if (dayKey){ dailyStats[dayKey].sent++; dailyStats[dayKey].pending++; }
       } else if (status === "Отправлено"){
@@ -622,7 +679,7 @@ function renderCards(t){
   document.getElementById("cards").innerHTML = `
     <div class="card"><div class="label">Отправлено</div><div class="value">${fmt(t.sent)}</div><div class="trend" id="trendSent"></div></div>
     <div class="card"><div class="label">Подтверждено</div><div class="value" style="color:var(--green)">${fmt(t.confirmed)}</div><div class="sub">${pct}%</div><div class="trend" id="trendConfirmed"></div></div>
-    <div class="card"><div class="label">Ожидает</div><div class="value" style="color:var(--amber)">${fmt(t.pending)}</div><div class="trend" id="trendPending"></div></div>
+    <div class="card"><div class="label">Ожидает</div><div class="value" style="color:var(--amber)">${fmt(t.pending)}</div><div class="sub">${fmtMoney(t.pendingSum)}</div><div class="trend" id="trendPending"></div></div>
     <div class="card"><div class="label">Отказано</div><div class="value" style="color:var(--red)">${fmt(t.rejected)}</div><div class="trend" id="trendRejected"></div></div>
   `;
 }
@@ -654,8 +711,53 @@ function renderCompanyTable(byCompany){
       <td style="color:var(--amber)">${fmt(c.pending)}</td>
       <td style="color:var(--red)">${fmt(c.rejected)}</td>
       <td>${pct}%</td>
+      <td>${fmtMoney(c.pendingSum)}</td>
     </tr>`;
-  }).join("") || `<tr><td colspan="6" style="color:var(--text2)">Нет данных</td></tr>`;
+  }).join("") || `<tr><td colspan="7" style="color:var(--text2)">Нет данных</td></tr>`;
+}
+
+function buildDeptFilterOptions(deptSet, selectedDept){
+  const sel = document.getElementById("deptFilter");
+  const opts = Array.from(deptSet).sort((a,b) => a.localeCompare(b,"ru"));
+  sel.innerHTML = `<option value="">Все подразделения</option>` +
+    opts.map(d => `<option value="${d}" ${d===selectedDept?"selected":""}>${d}</option>`).join("");
+}
+
+function renderTopAmounts(topPendingItems){
+  const top = topPendingItems.slice().sort((a,b) => b.amount-a.amount).slice(0,10);
+  const box = document.getElementById("topAmountList");
+  box.innerHTML = top.map(({item,amount,contractor}) => {
+    const inv = getField(item,"СЧЁТ-ФАКТУРА") || "-";
+    const resp = getField(item,"ответственный") || "Неизвестно";
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);gap:10px;">
+      <div style="overflow:hidden;">
+        <div class="long-text" title="${inv}"><b>${inv}</b></div>
+        <div style="font-size:12px;color:var(--text2)" class="long-text" title="${contractor}">${contractor||"-"} · ${resp}</div>
+      </div>
+      <b style="white-space:nowrap;color:var(--amber)">${fmtMoney(amount)}</b>
+    </div>`;
+  }).join("") || `<div style="color:var(--text2);font-size:13px">Нет ожидающих ЭСФ с суммой</div>`;
+}
+
+function renderAnomalies(amountRows, sellerAgg){
+  const anomalies = [];
+  amountRows.forEach(({item, amount, seller}) => {
+    if (!seller || !sellerAgg[seller] || sellerAgg[seller].count < 3) return;
+    const avg = sellerAgg[seller].sum / sellerAgg[seller].count;
+    if (avg <= 0) return;
+    const ratio = amount / avg;
+    if (ratio >= 3) anomalies.push({item, amount, seller, avg, ratio});
+  });
+  anomalies.sort((a,b) => b.ratio-a.ratio);
+  const top = anomalies.slice(0,10);
+  const box = document.getElementById("anomalyList");
+  box.innerHTML = top.map(({item,amount,seller,avg,ratio}) => {
+    const inv = getField(item,"СЧЁТ-ФАКТУРА") || "-";
+    return `<div style="padding:9px 0;border-bottom:1px solid var(--border);font-size:12px;">
+      <div class="long-text" title="${seller}"><b>${seller}</b> — ${inv}</div>
+      <div style="color:var(--text2)">Обычно ~${fmtMoney(avg)}, сейчас <span style="color:var(--red)">${fmtMoney(amount)}</span> (в ${ratio.toFixed(1)}× больше)</div>
+    </div>`;
+  }).join("") || `<div style="color:var(--text2);font-size:13px">Необычных сумм не обнаружено</div>`;
 }
 
 function renderCompanyChart(byCompany){
@@ -715,8 +817,9 @@ function renderEmployeeTable(stats){
       <td style="color:var(--amber)">${fmt(s.pending)}</td>
       <td style="color:var(--red)">${fmt(s.rejected)}</td>
       <td>${pct}%</td>
+      <td>${fmtMoney(s.pendingSum)}</td>
     </tr>`;
-  }).join("") || `<tr><td colspan="6" style="color:var(--text2)">Нет данных</td></tr>`;
+  }).join("") || `<tr><td colspan="7" style="color:var(--text2)">Нет данных</td></tr>`;
 }
 
 function renderAttentionList(stats){
