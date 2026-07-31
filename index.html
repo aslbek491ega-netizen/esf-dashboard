@@ -83,6 +83,21 @@
     .panel,.card{background:#fff;color:#111;border:1px solid #ccc}
   }
 </style>
+
+<style id="nomenclature-v11-style">
+.nm-section{margin:14px 0;border:1px solid #d9dee7;border-radius:12px;background:#fff;overflow:hidden}
+.nm-section-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;cursor:pointer;font-weight:700;user-select:none}
+.nm-section-head:hover{background:#f7f8fa}
+.nm-section-toggle{font-size:13px;opacity:.75}
+.nm-section-body{padding:14px 16px}
+.nm-section.collapsed .nm-section-body{display:none}
+.nm-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.nm-kpi{padding:12px;border:1px solid #e2e6ec;border-radius:10px;background:#fafbfc}
+.nm-kpi-label{font-size:12px;color:#68707d;margin-bottom:5px}
+.nm-kpi-value{font-size:20px;font-weight:800}
+.nm-extra-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+</style>
+
 </head>
 <body>
 
@@ -247,6 +262,33 @@
       </div>
     </div>
 
+    <div class="panel" id="nomenclaturePanel" style="margin-bottom:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div>
+          <h3 style="margin-bottom:4px;">📦 Номенклатура</h3>
+          <div id="nomenclatureInfo" style="font-size:12px;color:var(--text2);">Данные из листа «Номенклатура»</div>
+        </div>
+        <button class="btn secondary small" id="refreshNomenclatureBtn">↻ Обновить номенклатуру</button>
+      </div>
+      <div class="cards" id="nomenclatureCards" style="grid-template-columns:repeat(3,1fr);margin-top:14px;margin-bottom:14px;"></div>
+      <div class="grid2" style="margin-bottom:0;">
+        <div>
+          <h3>TOP-20 номенклатур по сумме</h3>
+          <div id="topNomenclatureList"></div>
+        </div>
+        <div>
+          <h3>TOP-20 поставщиков по сумме</h3>
+          <div id="topNomenclatureSuppliers"></div>
+        </div>
+      </div>
+      <div style="overflow:auto;max-height:520px;margin-top:16px;">
+        <table>
+          <thead><tr><th>Дата</th><th>СФ №</th><th>Поставщик</th><th>Покупатель</th><th>Номенклатура</th><th>ЕНКТУ</th><th>Ед.</th><th>Кол-во</th><th>Цена</th><th>Сумма без НДС</th><th>НДС</th><th>Сумма с НДС</th></tr></thead>
+          <tbody id="nomenclatureBody"></tbody>
+        </table>
+      </div>
+    </div>
+
     <div class="panel" style="margin-bottom:20px;">
       <h3>Последние 20 действий</h3>
       <table>
@@ -318,6 +360,8 @@ let currentPeriodRows = [];     // танланган сана оралигид�
 let currentDetailRows = [];     // излаш/статус/просрочка филтридан утган каторлар
 let autoRefreshTimer = null;
 let companyChart, donutChart, dailyChart, monthlyChart;
+let nomenclatureRows = [];
+
 
 // =========================================
 // URL параметрларини укиш/ёзиш (филтрни ссылка билан улашиш)
@@ -674,6 +718,83 @@ function initCollapsibles(root){
 }
 
 // =========================================
+// НОМЕНКЛАТУРА — только чтение листа «Номенклатура»
+// =========================================
+async function loadNomenclature(){
+  const rows = await fetchRange("Номенклатура");
+  nomenclatureRows = [];
+  if (!rows || rows.length < 2){
+    renderNomenclature([]);
+    return;
+  }
+  const map = colMap(rows[0]);
+  for (let i=1;i<rows.length;i++){
+    const r = rows[i] || [];
+    if (!r.length) continue;
+    nomenclatureRows.push({row:r,map});
+  }
+  renderNomenclature(nomenclatureRows);
+}
+
+function nomField(item, name){
+  const idx = item.map[name];
+  return idx === undefined ? "" : String(item.row[idx]||"").trim();
+}
+
+function renderNomenclature(items){
+  const totalRows = items.length;
+  const invoiceSet = new Set(items.map(x=>nomField(x,"Счёт-фактура №")).filter(Boolean));
+  const supplierSet = new Set(items.map(x=>nomField(x,"Поставщик")).filter(Boolean));
+  let total = 0;
+  const productAgg = {}, supplierAgg = {};
+  items.forEach(item=>{
+    const product = nomField(item,"Наименование товара/услуги") || "Без наименования";
+    const supplier = nomField(item,"Поставщик") || "Не указан";
+    const amount = parseAmount(nomField(item,"Стоимость с НДС"));
+    const qty = parseAmount(nomField(item,"Количество"));
+    total += amount;
+    if (!productAgg[product]) productAgg[product]={sum:0,qty:0,count:0};
+    productAgg[product].sum += amount; productAgg[product].qty += qty; productAgg[product].count++;
+    if (!supplierAgg[supplier]) supplierAgg[supplier]={sum:0,count:0};
+    supplierAgg[supplier].sum += amount; supplierAgg[supplier].count++;
+  });
+
+  document.getElementById("nomenclatureCards").innerHTML = `
+    <div class="card"><div class="label">Строк номенклатуры</div><div class="value">${fmt(totalRows)}</div></div>
+    <div class="card"><div class="label">ЭСФ</div><div class="value">${fmt(invoiceSet.size)}</div></div>
+    <div class="card"><div class="label">Сумма с НДС</div><div class="value" style="color:var(--green);font-size:22px">${fmtMoney(total)}</div></div>`;
+
+  const topProducts = Object.entries(productAgg).sort((a,b)=>b[1].sum-a[1].sum).slice(0,20);
+  document.getElementById("topNomenclatureList").innerHTML = topProducts.map(([name,v],i)=>`
+    <div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <span class="long-text" title="${name}">${i+1}. ${name}</span><b style="white-space:nowrap">${fmtMoney(v.sum)}</b>
+    </div>`).join("") || `<div style="color:var(--text2)">Нет данных</div>`;
+
+  const topSuppliers = Object.entries(supplierAgg).sort((a,b)=>b[1].sum-a[1].sum).slice(0,20);
+  document.getElementById("topNomenclatureSuppliers").innerHTML = topSuppliers.map(([name,v],i)=>`
+    <div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <span class="long-text" title="${name}">${i+1}. ${name}</span><b style="white-space:nowrap">${fmtMoney(v.sum)}</b>
+    </div>`).join("") || `<div style="color:var(--text2)">Нет данных</div>`;
+
+  const shown = items.slice().reverse().slice(0,500);
+  document.getElementById("nomenclatureBody").innerHTML = shown.map(item=>`<tr>
+    <td>${nomField(item,"Дата счёт-фактуры")}</td>
+    <td>${nomField(item,"Счёт-фактура №")}</td>
+    <td class="long-text" title="${nomField(item,"Поставщик")}">${nomField(item,"Поставщик")}</td>
+    <td class="long-text" title="${nomField(item,"Покупатель")}">${nomField(item,"Покупатель")}</td>
+    <td class="long-text" title="${nomField(item,"Наименование товара/услуги")}">${nomField(item,"Наименование товара/услуги")}</td>
+    <td>${nomField(item,"Код ЕНКТУ")}</td>
+    <td>${nomField(item,"Ед. изм.")}</td>
+    <td>${nomField(item,"Количество")}</td>
+    <td>${nomField(item,"Цена")}</td>
+    <td>${nomField(item,"Стоимость поставки")}</td>
+    <td>${nomField(item,"Сумма НДС")}</td>
+    <td>${nomField(item,"Стоимость с НДС")}</td>
+  </tr>`).join("") || `<tr><td colspan="12" style="color:var(--text2)">Нет данных</td></tr>`;
+  document.getElementById("nomenclatureInfo").textContent = `Загружено ${fmt(totalRows)} строк · ${fmt(invoiceSet.size)} ЭСФ · ${fmt(supplierSet.size)} поставщиков`;
+}
+
+// =========================================
 // АСОСИЙ ЮКЛАШ
 // =========================================
 async function loadAll(){
@@ -845,6 +966,7 @@ async function loadAll(){
 
     const logRows = await fetchRange(LOG_SHEET);
     renderLogs(logRows);
+    await loadNomenclature();
 
     // Хакикий утган давр билан солиштириш (сана оралиги танланган булсагина)
     if (prevFromD && prevToD) updateTrend(totals, prevTotals);
@@ -1224,5 +1346,77 @@ document.getElementById("exportCsvBtn").onclick = () => {
 
 document.getElementById("printBtn").onclick = () => window.print();
 </script>
+
+<script id="nomenclature-v11-js">
+(function(){
+  function makeNmSectionsCollapsible(){
+    document.querySelectorAll('.nm-section-head').forEach(function(h){
+      if(h.dataset.bound) return;
+      h.dataset.bound='1';
+      h.addEventListener('click', function(){
+        const s=h.closest('.nm-section');
+        s.classList.toggle('collapsed');
+        const t=h.querySelector('.nm-section-toggle');
+        if(t) t.textContent=s.classList.contains('collapsed')?'Развернуть':'Свернуть';
+      });
+    });
+  }
+
+  window.addNomenclatureExtraIndicators = function(rows){
+    if(!Array.isArray(rows)) return;
+    const host=document.getElementById('nomenclatureExtraIndicators');
+    if(!host) return;
+
+    const num=(v)=>{
+      if(v===null||v===undefined||v==='') return 0;
+      const s=String(v).replace(/\s/g,'').replace(/,/g,'.').replace(/[^\d.-]/g,'');
+      const n=Number(s); return Number.isFinite(n)?n:0;
+    };
+    const field=(r,names)=>{
+      for(const n of names){
+        if(r && r[n]!==undefined && r[n]!==null && String(r[n]).trim()!=='') return r[n];
+      }
+      return '';
+    };
+
+    const inv=new Set(), nomen=new Set(), suppliers=new Set();
+    let qty=0, noVat=0, vat=0, withVat=0;
+    rows.forEach(r=>{
+      const sf=field(r,['СФ №','СФ','СЧЁТ-ФАКТУРА','Счет-фактура']);
+      const nm=field(r,['Номенклатура','номенклатура']);
+      const sp=field(r,['Поставщик','поставщик']);
+      if(sf) inv.add(String(sf));
+      if(nm) nomen.add(String(nm).trim());
+      if(sp) suppliers.add(String(sp).trim());
+      qty += num(field(r,['Количество','количество','Кол-во']));
+      noVat += num(field(r,['Стоимость без НДС','стоимость без НДС','Сумма без НДС']));
+      vat += num(field(r,['Сумма НДС','сумма НДС','НДС']));
+      withVat += num(field(r,['Стоимость с НДС','стоимость с НДС','Сумма с НДС']));
+    });
+
+    const avgInv=inv.size?withVat/inv.size:0;
+    const avgLine=rows.length?withVat/rows.length:0;
+    const fmtN=n=>Number(n||0).toLocaleString('ru-RU',{maximumFractionDigits:2});
+
+    host.innerHTML=`
+      <div class="nm-kpis">
+        <div class="nm-kpi"><div class="nm-kpi-label">Уникальных ЭСФ</div><div class="nm-kpi-value">${fmtN(inv.size)}</div></div>
+        <div class="nm-kpi"><div class="nm-kpi-label">Позиций</div><div class="nm-kpi-value">${fmtN(rows.length)}</div></div>
+        <div class="nm-kpi"><div class="nm-kpi-label">Уникальных номенклатур</div><div class="nm-kpi-value">${fmtN(nomen.size)}</div></div>
+        <div class="nm-kpi"><div class="nm-kpi-label">Поставщиков</div><div class="nm-kpi-value">${fmtN(suppliers.size)}</div></div>
+        <div class="nm-kpi"><div class="nm-kpi-label">Количество товара</div><div class="nm-kpi-value">${fmtN(qty)}</div></div>
+        <div class="nm-kpi"><div class="nm-kpi-label">Сумма без НДС</div><div class="nm-kpi-value">${fmtN(noVat)}</div></div>
+        <div class="nm-kpi"><div class="nm-kpi-label">НДС</div><div class="nm-kpi-value">${fmtN(vat)}</div></div>
+        <div class="nm-kpi"><div class="nm-kpi-label">Сумма с НДС</div><div class="nm-kpi-value">${fmtN(withVat)}</div></div>
+        <div class="nm-kpi"><div class="nm-kpi-label">Средняя сумма 1 ЭСФ</div><div class="nm-kpi-value">${fmtN(avgInv)}</div></div>
+        <div class="nm-kpi"><div class="nm-kpi-label">Средняя сумма позиции</div><div class="nm-kpi-value">${fmtN(avgLine)}</div></div>
+      </div>`;
+  };
+
+  document.addEventListener('DOMContentLoaded', makeNmSectionsCollapsible);
+  window.makeNmSectionsCollapsible=makeNmSectionsCollapsible;
+})();
+</script>
+
 </body>
 </html>
