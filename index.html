@@ -112,6 +112,7 @@
       </div>
     </div>
 
+    <div id="dashboardContent">
     <div class="panel filterPanel">
       <div>
         <label>С даты</label>
@@ -253,7 +254,41 @@
         <tbody id="logsBody"></tbody>
       </table>
     </div>
-  </div>
+
+    </div>
+
+    <div id="nomenclatureContent" class="hidden">
+      <div class="panel" style="margin-bottom:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+          <div>
+            <h3 style="margin:0 0 5px;">📦 Номенклатура и закупки</h3>
+            <div style="font-size:12px;color:var(--text2);">Данные из листа «Номенклатура», извлечённые из подписанных ЭСФ</div>
+          </div>
+          <button class="btn" id="refreshNomenclatureBtn">↻ Обновить номенклатуру</button>
+        </div>
+      </div>
+      <div class="cards" id="nomCards"></div>
+      <div class="panel filterPanel" style="margin-bottom:20px;">
+        <div><label>Поиск</label><input id="nomSearch" placeholder="Номенклатура / поставщик / ЭСФ" style="width:260px;"></div>
+        <div><label>С даты</label><input type="date" id="nomFromDate"></div>
+        <div><label>По дату</label><input type="date" id="nomToDate"></div>
+        <button class="btn secondary" id="nomThisMonthBtn">Этот месяц</button>
+        <button class="btn secondary" id="nomAllTimeBtn">Всё время</button>
+      </div>
+      <div class="grid2">
+        <div class="panel"><h3>📦 TOP-20 номенклатуры по сумме</h3><div id="nomTopProducts"></div></div>
+        <div class="panel"><h3>🏢 TOP-20 поставщиков по сумме</h3><div id="nomTopSuppliers"></div></div>
+      </div>
+      <div class="panel" style="margin-bottom:20px;">
+        <h3>Детализация номенклатуры</h3>
+        <div style="overflow:auto;max-height:600px;">
+          <table>
+            <thead><tr><th>Дата</th><th>ЭСФ №</th><th>Поставщик</th><th>Покупатель</th><th>Номенклатура</th><th>ЕНКТУ</th><th>Ед.</th><th>Кол-во</th><th>Цена</th><th>Без НДС</th><th>НДС</th><th>С НДС</th></tr></thead>
+            <tbody id="nomBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>  </div>
 </div>
 
 <script>
@@ -269,12 +304,15 @@ const MAIN_SHEETS = [
   "СФ с Soliq LA"
 ];
 const LOG_SHEET = "logs";
+const NOMENCLATURE_SHEET = "Номенклатура";
 const SCOPES = "https://www.googleapis.com/auth/spreadsheets.readonly";
 // =========================================
 
 let accessToken = null;
 let tokenClient = null;
 let selectedCompany = "";
+let selectedPage = "dashboard";
+let nomenclatureRows = [];
 let allInvoiceRows = [];        // барча каторлар (санадан катьи назар), диаграмма/трендлар учун
 let currentPeriodRows = [];     // танланган сана оралигидаги каторлар
 let currentDetailRows = [];     // излаш/статус/просрочка филтридан утган каторлар
@@ -316,19 +354,139 @@ function writeFiltersToURL(){
 // =========================================
 function buildSidebar(){
   const nav = document.getElementById("navList");
-  let html = `<a href="#" data-company="" class="${selectedCompany===""?"active":""}">Главная</a>`;
+  let html = `<a href="#" data-page="dashboard" data-company="" class="${selectedPage==="dashboard" && selectedCompany===""?"active":""}">Главная</a>`;
+  html += `<a href="#" data-page="nomenclature" class="${selectedPage==="nomenclature"?"active":""}">📦 Номенклатура</a>`;
   MAIN_SHEETS.forEach(name => {
-    html += `<a href="#" data-company="${name}" class="${selectedCompany===name?"active":""}">${name}</a>`;
+    html += `<a href="#" data-page="dashboard" data-company="${name}" class="${selectedPage==="dashboard" && selectedCompany===name?"active":""}">${name}</a>`;
   });
   nav.innerHTML = html;
   nav.querySelectorAll("a").forEach(a => {
     a.onclick = (e) => {
       e.preventDefault();
-      selectedCompany = a.dataset.company;
+      selectedPage = a.dataset.page || "dashboard";
+      selectedCompany = a.dataset.company || "";
       buildSidebar();
-      loadAll();
+      togglePage();
+      if (selectedPage === "nomenclature") loadNomenclature();
+      else loadAll();
     };
   });
+}
+
+// =========================================
+// НОМЕНКЛАТУРА
+// =========================================
+function togglePage(){
+  const dash = document.getElementById("dashboardContent");
+  const nom = document.getElementById("nomenclatureContent");
+  if (!dash || !nom) return;
+  const isNom = selectedPage === "nomenclature";
+  dash.classList.toggle("hidden", isNom);
+  nom.classList.toggle("hidden", !isNom);
+  document.getElementById("pageTitle").textContent = isNom ? "Номенклатура" : (selectedCompany || "Дашборд");
+  document.getElementById("dateLabel").textContent = isNom ? "Данные из Google Sheets → Номенклатура" : document.getElementById("dateLabel").textContent;
+}
+
+async function loadNomenclature(){
+  showErr("");
+  togglePage();
+  document.getElementById("dateLabel").textContent = "Обновлено: " + new Date().toLocaleString("ru-RU");
+  try{
+    const rows = await fetchRange(NOMENCLATURE_SHEET);
+    if (!rows.length || rows.length < 2){
+      nomenclatureRows = [];
+      renderNomenclature([]);
+      return;
+    }
+    const map = colMap(rows[0]);
+    nomenclatureRows = rows.slice(1).filter(r => r && r.length).map(row => ({row, map}));
+    renderNomenclature(nomenclatureRows);
+  } catch(e){
+    showErr("Ошибка загрузки «Номенклатура»: " + e.message);
+  }
+}
+
+function nomField(item, names){
+  for (const n of names){
+    if (item.map[n] !== undefined) return String(item.row[item.map[n]] || "").trim();
+  }
+  return "";
+}
+function nomNum(v){
+  if (v === null || v === undefined || v === "") return 0;
+  let s = String(v).replace(/\s/g, "").replace(/\u00A0/g, "").replace(/,/g, ".").replace(/[^0-9.\-]/g, "");
+  const parts=s.split(".");
+  if(parts.length>2) s=parts[0]+"."+parts.slice(1).join("");
+  const n=parseFloat(s); return isNaN(n)?0:n;
+}
+function nomDate(v){
+  const m=String(v||"").match(/(\d{2})\.(\d{2})\.(\d{4})/);
+  return m ? new Date(`${m[3]}-${m[2]}-${m[1]}T00:00:00`) : null;
+}
+function nomMoney(n){ return (n||0).toLocaleString("ru-RU",{minimumFractionDigits:0,maximumFractionDigits:2}) + " сум"; }
+function nomFiltered(){
+  const q=(document.getElementById("nomSearch").value||"").toLowerCase().trim();
+  const from=document.getElementById("nomFromDate").value;
+  const to=document.getElementById("nomToDate").value;
+  const fromD=from?new Date(from+"T00:00:00"):null;
+  const toD=to?new Date(to+"T23:59:59"):null;
+  return nomenclatureRows.filter(item=>{
+    const date=nomDate(nomField(item,["Дата счёт-фактуры","Дата СФ"]));
+    const name=nomField(item,["Наименование товара/услуги","Номенклатура"]);
+    const seller=nomField(item,["Поставщик","Продавец"]);
+    const inv=nomField(item,["Счёт-фактура №","СФ №"]);
+    const hay=(name+" "+seller+" "+inv).toLowerCase();
+    return (!q||hay.includes(q)) && (!fromD||!date||date>=fromD) && (!toD||!date||date<=toD);
+  });
+}
+function renderAggList(elId, entries, unitLabel){
+  const el=document.getElementById(elId);
+  if(!entries.length){el.innerHTML='<div style="color:var(--text2)">Нет данных</div>';return;}
+  el.innerHTML=entries.map(([name,v],i)=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--border)"><span class="long-text" title="${name}">${i+1}. ${name}</span><b>${nomMoney(v)}${unitLabel?`<div style="font-size:11px;color:var(--text2);font-weight:400">${unitLabel}</div>`:""}</b></div>`).join("");
+}
+function renderNomenclature(items){
+  const productAgg={}, supplierAgg={}; let totalSum=0,totalQty=0;
+  items.forEach(item=>{
+    const name=nomField(item,["Наименование товара/услуги","Номенклатура"])||"Без названия";
+    const seller=nomField(item,["Поставщик","Продавец"])||"Неизвестно";
+    const sum=nomNum(nomField(item,["Стоимость с НДС","Сумма с НДС","Стоимость"]));
+    const qty=nomNum(nomField(item,["Количество","Кол-во"]));
+    productAgg[name]=(productAgg[name]||0)+sum;
+    supplierAgg[seller]=(supplierAgg[seller]||0)+sum;
+    totalSum+=sum; totalQty+=qty;
+  });
+  const uniqueProducts=Object.keys(productAgg).length;
+  const uniqueSuppliers=Object.keys(supplierAgg).length;
+  document.getElementById("nomCards").innerHTML=`
+    <div class="card"><div class="label">Строк номенклатуры</div><div class="value">${fmt(items.length)}</div></div>
+    <div class="card"><div class="label">Номенклатур</div><div class="value" style="color:var(--green)">${fmt(uniqueProducts)}</div></div>
+    <div class="card"><div class="label">Поставщиков</div><div class="value" style="color:var(--amber)">${fmt(uniqueSuppliers)}</div></div>
+    <div class="card"><div class="label">Сумма с НДС</div><div class="value" style="color:var(--purple);font-size:24px">${nomMoney(totalSum)}</div><div class="sub">Кол-во: ${fmt(totalQty)}</div></div>`;
+  renderAggList("nomTopProducts",Object.entries(productAgg).sort((a,b)=>b[1]-a[1]).slice(0,20));
+  renderAggList("nomTopSuppliers",Object.entries(supplierAgg).sort((a,b)=>b[1]-a[1]).slice(0,20));
+  const body=document.getElementById("nomBody");
+  const rows=items.slice().sort((a,b)=>{
+    const da=nomDate(nomField(a,["Дата счёт-фактуры","Дата СФ"])); const db=nomDate(nomField(b,["Дата счёт-фактуры","Дата СФ"]));
+    return (db?db.getTime():0)-(da?da.getTime():0);
+  }).slice(0,2000);
+  body.innerHTML=rows.map(item=>`<tr>
+    <td>${nomField(item,["Дата счёт-фактуры","Дата СФ"])}</td><td>${nomField(item,["Счёт-фактура №","СФ №"])}</td>
+    <td>${nomField(item,["Поставщик","Продавец"])}</td><td>${nomField(item,["Покупатель"])}</td>
+    <td>${nomField(item,["Наименование товара/услуги","Номенклатура"])}</td><td>${nomField(item,["Код ЕНКТУ","ЕНКТУ"])}</td>
+    <td>${nomField(item,["Ед. изм.","Ед."])}</td><td>${nomField(item,["Количество","Кол-во"])}</td>
+    <td>${nomField(item,["Цена"])}</td><td>${nomField(item,["Стоимость поставки","Стоимость без НДС"])}</td>
+    <td>${nomField(item,["Сумма НДС"])}</td><td>${nomField(item,["Стоимость с НДС"])}</td>
+  </tr>`).join("") || '<tr><td colspan="12" style="color:var(--text2)">Нет данных</td></tr>';
+}
+function setupNomenclatureHandlers(){
+  if(document.body.dataset.nomReady) return; document.body.dataset.nomReady="1";
+  const refresh=()=>renderNomenclature(nomFiltered());
+  document.getElementById("nomSearch").oninput=refresh;
+  document.getElementById("nomFromDate").onchange=refresh;
+  document.getElementById("nomToDate").onchange=refresh;
+  document.getElementById("refreshNomenclatureBtn").onclick=loadNomenclature;
+  document.getElementById("nomThisMonthBtn").onclick=()=>{const n=new Date(),f=new Date(n.getFullYear(),n.getMonth(),1);document.getElementById("nomFromDate").value=f.toISOString().slice(0,10);document.getElementById("nomToDate").value=n.toISOString().slice(0,10);refresh();};
+  document.getElementById("nomAllTimeBtn").onclick=()=>{document.getElementById("nomFromDate").value="";document.getElementById("nomToDate").value="";refresh();};
 }
 
 // =========================================
@@ -345,6 +503,8 @@ function initGoogle(){
       document.getElementById("app").classList.remove("hidden");
       readFiltersFromURL();
       buildSidebar();
+      setupNomenclatureHandlers();
+      togglePage();
       loadAll();
     }
   });
@@ -365,7 +525,7 @@ document.getElementById("logoutBtn").onclick = () => {
   document.getElementById("loginScreen").classList.remove("hidden");
 };
 
-document.getElementById("refreshBtn").onclick = () => loadAll();
+document.getElementById("refreshBtn").onclick = () => selectedPage === "nomenclature" ? loadNomenclature() : loadAll();
 document.getElementById("applyFilterBtn").onclick = () => loadAll();
 document.getElementById("deptFilter").onchange = () => loadAll();
 document.getElementById("thisMonthBtn").onclick = () => {
@@ -384,7 +544,7 @@ document.getElementById("allTimeBtn").onclick = () => {
 document.getElementById("autoRefreshChk").onchange = (e) => {
   clearInterval(autoRefreshTimer);
   if (e.target.checked){
-    autoRefreshTimer = setInterval(loadAll, 5*60*1000);
+    autoRefreshTimer = setInterval(() => selectedPage === "nomenclature" ? loadNomenclature() : loadAll(), 5*60*1000);
   }
 };
 
@@ -485,16 +645,18 @@ function getSeller(item){
   return "";
 }
 
-// Статус — приоритет: Отказано > Подтверждено > Ожидает > Отправлено
+// Бизнес-логика статусов:
+// Отправлено = Да/Отменено + все подтвержденные/отказанные ЭСФ, которые ранее были отправлены.
+// Отказано = только Подписано=Отменено или Просажено=Отменено.
+// При конфликте Отказано имеет приоритет над Подтверждено.
 function getRowStatus(item){
   const m = item.map, r = item.row;
   const sent = m["Отправлено"]!==undefined ? (r[m["Отправлено"]]||"").trim() : "";
   const signed = m["Подписано"]!==undefined ? (r[m["Подписано"]]||"").trim() : "";
   const pros = m["Просажено"]!==undefined ? (r[m["Просажено"]]||"").trim() : "";
-  if (sent==="Отменено" || signed==="Отменено" || pros==="Отменено") return "Отказано";
-  if (sent==="Да" && signed==="Да") return "Подтверждено";
-  if (sent==="Да" && signed==="Нет") return "Ожидает";
-  if (sent==="Да") return "Отправлено";
+  if (signed==="Отменено" || pros==="Отменено") return "Отказано";
+  if (signed==="Да") return "Подтверждено";
+  if (sent==="Да" || sent==="Отменено") return "Ожидает";
   return "";
 }
 
