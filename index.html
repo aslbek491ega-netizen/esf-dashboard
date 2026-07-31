@@ -84,18 +84,13 @@
   }
 </style>
 
-<style id="nomenclature-v11-style">
-.nm-section{margin:14px 0;border:1px solid #d9dee7;border-radius:12px;background:#fff;overflow:hidden}
-.nm-section-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;cursor:pointer;font-weight:700;user-select:none}
-.nm-section-head:hover{background:#f7f8fa}
-.nm-section-toggle{font-size:13px;opacity:.75}
-.nm-section-body{padding:14px 16px}
-.nm-section.collapsed .nm-section-body{display:none}
-.nm-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
-.nm-kpi{padding:12px;border:1px solid #e2e6ec;border-radius:10px;background:#fafbfc}
-.nm-kpi-label{font-size:12px;color:#68707d;margin-bottom:5px}
-.nm-kpi-value{font-size:20px;font-weight:800}
-.nm-extra-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+<style id="nm-safe-style">
+.nm-collapse-btn{float:right;margin-left:8px;padding:5px 10px;border:1px solid var(--border);border-radius:7px;background:var(--panel2);color:var(--text);cursor:pointer;font-size:12px}
+.nm-collapsed{display:none!important}
+.nm-extra-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin:12px 0}
+.nm-extra-kpi{padding:10px 12px;border:1px solid var(--border);border-radius:9px;background:var(--panel2)}
+.nm-extra-kpi small{display:block;color:var(--text2);font-size:11px;margin-bottom:4px}
+.nm-extra-kpi b{font-size:18px}
 </style>
 
 </head>
@@ -1347,74 +1342,81 @@ document.getElementById("exportCsvBtn").onclick = () => {
 document.getElementById("printBtn").onclick = () => window.print();
 </script>
 
-<script id="nomenclature-v11-js">
+<script id="nm-safe-js">
 (function(){
-  function makeNmSectionsCollapsible(){
-    document.querySelectorAll('.nm-section-head').forEach(function(h){
-      if(h.dataset.bound) return;
-      h.dataset.bound='1';
-      h.addEventListener('click', function(){
-        const s=h.closest('.nm-section');
-        s.classList.toggle('collapsed');
-        const t=h.querySelector('.nm-section-toggle');
-        if(t) t.textContent=s.classList.contains('collapsed')?'Развернуть':'Свернуть';
-      });
-    });
+  function fmt(v){
+    return Number(v||0).toLocaleString("ru-RU",{maximumFractionDigits:2});
+  }
+  function num(v){
+    if(v===null||v===undefined||v==="") return 0;
+    var s=String(v).replace(/\s/g,"").replace(/,/g,".");
+    s=s.replace(/[^\d.-]/g,"");
+    var n=Number(s); return isFinite(n)?n:0;
+  }
+  function val(r,names){
+    for(var i=0;i<names.length;i++){
+      if(r && r[names[i]]!==undefined && r[names[i]]!==null && String(r[names[i]]).trim()!=="") return r[names[i]];
+    }
+    return "";
+  }
+  function init(){
+    var panel=document.getElementById("nomenclaturePanel");
+    if(!panel) return;
+
+    var head=panel.querySelector("h3");
+    if(head && !panel.querySelector(".nm-collapse-btn")){
+      var btn=document.createElement("button");
+      btn.className="nm-collapse-btn";
+      btn.textContent="Свернуть";
+      head.appendChild(btn);
+      var children=[];
+      for(var i=0;i<panel.children.length;i++){
+        var ch=panel.children[i];
+        if(ch!==head.parentElement && ch!==head && !ch.contains(btn)) children.push(ch);
+      }
+      btn.onclick=function(e){
+        e.stopPropagation();
+        for(var j=0;j<children.length;j++) children[j].classList.toggle("nm-collapsed");
+        btn.textContent=children.length && children[0].classList.contains("nm-collapsed") ? "Развернуть" : "Свернуть";
+      };
+    }
+
+    var host=document.getElementById("nomenclatureCards");
+    if(host && !document.getElementById("nmExtraKpis")){
+      var extra=document.createElement("div");
+      extra.id="nmExtraKpis";
+      extra.className="nm-extra-kpis";
+      host.parentNode.insertBefore(extra,host);
+    }
   }
 
-  window.addNomenclatureExtraIndicators = function(rows){
-    if(!Array.isArray(rows)) return;
-    const host=document.getElementById('nomenclatureExtraIndicators');
-    if(!host) return;
-
-    const num=(v)=>{
-      if(v===null||v===undefined||v==='') return 0;
-      const s=String(v).replace(/\s/g,'').replace(/,/g,'.').replace(/[^\d.-]/g,'');
-      const n=Number(s); return Number.isFinite(n)?n:0;
-    };
-    const field=(r,names)=>{
-      for(const n of names){
-        if(r && r[n]!==undefined && r[n]!==null && String(r[n]).trim()!=='') return r[n];
-      }
-      return '';
-    };
-
-    const inv=new Set(), nomen=new Set(), suppliers=new Set();
-    let qty=0, noVat=0, vat=0, withVat=0;
-    rows.forEach(r=>{
-      const sf=field(r,['СФ №','СФ','СЧЁТ-ФАКТУРА','Счет-фактура']);
-      const nm=field(r,['Номенклатура','номенклатура']);
-      const sp=field(r,['Поставщик','поставщик']);
-      if(sf) inv.add(String(sf));
-      if(nm) nomen.add(String(nm).trim());
-      if(sp) suppliers.add(String(sp).trim());
-      qty += num(field(r,['Количество','количество','Кол-во']));
-      noVat += num(field(r,['Стоимость без НДС','стоимость без НДС','Сумма без НДС']));
-      vat += num(field(r,['Сумма НДС','сумма НДС','НДС']));
-      withVat += num(field(r,['Стоимость с НДС','стоимость с НДС','Сумма с НДС']));
+  window.updateNomenclatureExtraKpis=function(rows){
+    var host=document.getElementById("nmExtraKpis");
+    if(!host || !Array.isArray(rows)) return;
+    var sf=new Set(), nm=new Set(), sp=new Set(), qty=0, noVat=0, vat=0, total=0;
+    rows.forEach(function(r){
+      var a=val(r,["СФ №","СФ","СЧЁТ-ФАКТУРА","Счет-фактура"]);
+      var b=val(r,["Номенклатура","номенклатура"]);
+      var c=val(r,["Поставщик","поставщик"]);
+      if(a) sf.add(String(a)); if(b) nm.add(String(b).trim()); if(c) sp.add(String(c).trim());
+      qty+=num(val(r,["Количество","количество","Кол-во"]));
+      noVat+=num(val(r,["Стоимость без НДС","стоимость без НДС","Сумма без НДС"]));
+      vat+=num(val(r,["Сумма НДС","сумма НДС","НДС"]));
+      total+=num(val(r,["Стоимость с НДС","стоимость с НДС","Сумма с НДС"]));
     });
-
-    const avgInv=inv.size?withVat/inv.size:0;
-    const avgLine=rows.length?withVat/rows.length:0;
-    const fmtN=n=>Number(n||0).toLocaleString('ru-RU',{maximumFractionDigits:2});
-
-    host.innerHTML=`
-      <div class="nm-kpis">
-        <div class="nm-kpi"><div class="nm-kpi-label">Уникальных ЭСФ</div><div class="nm-kpi-value">${fmtN(inv.size)}</div></div>
-        <div class="nm-kpi"><div class="nm-kpi-label">Позиций</div><div class="nm-kpi-value">${fmtN(rows.length)}</div></div>
-        <div class="nm-kpi"><div class="nm-kpi-label">Уникальных номенклатур</div><div class="nm-kpi-value">${fmtN(nomen.size)}</div></div>
-        <div class="nm-kpi"><div class="nm-kpi-label">Поставщиков</div><div class="nm-kpi-value">${fmtN(suppliers.size)}</div></div>
-        <div class="nm-kpi"><div class="nm-kpi-label">Количество товара</div><div class="nm-kpi-value">${fmtN(qty)}</div></div>
-        <div class="nm-kpi"><div class="nm-kpi-label">Сумма без НДС</div><div class="nm-kpi-value">${fmtN(noVat)}</div></div>
-        <div class="nm-kpi"><div class="nm-kpi-label">НДС</div><div class="nm-kpi-value">${fmtN(vat)}</div></div>
-        <div class="nm-kpi"><div class="nm-kpi-label">Сумма с НДС</div><div class="nm-kpi-value">${fmtN(withVat)}</div></div>
-        <div class="nm-kpi"><div class="nm-kpi-label">Средняя сумма 1 ЭСФ</div><div class="nm-kpi-value">${fmtN(avgInv)}</div></div>
-        <div class="nm-kpi"><div class="nm-kpi-label">Средняя сумма позиции</div><div class="nm-kpi-value">${fmtN(avgLine)}</div></div>
-      </div>`;
+    host.innerHTML =
+      '<div class="nm-extra-kpi"><small>Уникальных ЭСФ</small><b>'+fmt(sf.size)+'</b></div>'+
+      '<div class="nm-extra-kpi"><small>Позиций</small><b>'+fmt(rows.length)+'</b></div>'+
+      '<div class="nm-extra-kpi"><small>Номенклатур</small><b>'+fmt(nm.size)+'</b></div>'+
+      '<div class="nm-extra-kpi"><small>Поставщиков</small><b>'+fmt(sp.size)+'</b></div>'+
+      '<div class="nm-extra-kpi"><small>Количество</small><b>'+fmt(qty)+'</b></div>'+
+      '<div class="nm-extra-kpi"><small>Без НДС</small><b>'+fmt(noVat)+'</b></div>'+
+      '<div class="nm-extra-kpi"><small>НДС</small><b>'+fmt(vat)+'</b></div>'+
+      '<div class="nm-extra-kpi"><small>С НДС</small><b>'+fmt(total)+'</b></div>';
   };
 
-  document.addEventListener('DOMContentLoaded', makeNmSectionsCollapsible);
-  window.makeNmSectionsCollapsible=makeNmSectionsCollapsible;
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",init);
+  else init();
 })();
 </script>
 
