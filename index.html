@@ -590,7 +590,7 @@ async function loadAll(){
 
         // Утган давр (тренд солиштируви учун) — факат умумий сонлар
         if (isPrevPeriod){
-          if (status === "Отказано") prevTotals.rejected++;
+          if (status === "Отказано"){ prevTotals.sent++; prevTotals.rejected++; }
           else if (status === "Подтверждено"){ prevTotals.sent++; prevTotals.confirmed++; }
           else if (status === "Ожидает"){ prevTotals.sent++; prevTotals.pending++; }
           else if (status === "Отправлено") prevTotals.sent++;
@@ -612,7 +612,7 @@ async function loadAll(){
           }
         }
 
-        if (status === "Отказано") rejected++;
+        if (status === "Отказано"){ sent++; rejected++; }
         else if (status === "Подтверждено"){ sent++; confirmed++; }
         else if (status === "Ожидает"){
           sent++; pending++; pendingSum += amount;
@@ -654,8 +654,8 @@ async function loadAll(){
       if (dayKey && !dailyStats[dayKey]) dailyStats[dayKey] = {sent:0,confirmed:0,pending:0,rejected:0};
 
       if (status === "Отказано"){
-        employeeStats[key].rejected++;
-        if (dayKey) dailyStats[dayKey].rejected++;
+        employeeStats[key].sent++; employeeStats[key].rejected++;
+        if (dayKey){ dailyStats[dayKey].sent++; dailyStats[dayKey].rejected++; }
       } else if (status === "Подтверждено"){
         employeeStats[key].sent++; employeeStats[key].confirmed++;
         if (dayKey){ dailyStats[dayKey].sent++; dailyStats[dayKey].confirmed++; }
@@ -932,7 +932,7 @@ function renderMonthlyChart(items){
     const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
     if (!m[key]) m[key] = {sent:0,confirmed:0,pending:0,rejected:0};
     const st = getRowStatus(item);
-    if (st==="Отказано") m[key].rejected++;
+    if (st==="Отказано"){ m[key].sent++; m[key].rejected++; }
     else if (st==="Подтверждено"){ m[key].sent++; m[key].confirmed++; }
     else if (st==="Ожидает"){ m[key].sent++; m[key].pending++; }
     else if (st==="Отправлено") m[key].sent++;
