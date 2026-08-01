@@ -98,13 +98,26 @@
 #nmPage .nm-list-row:nth-child(n+11){display:none}
 #nmPage .nm-list-row.expanded{display:flex}
 #nmPage .nm-more{margin-top:10px;width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--panel2);color:var(--text);cursor:pointer}
-#nmPage .nm-detail{max-height:520px;overflow:auto}
-#nmPage .nm-detail table{font-size:12px}
-#nmPage .nm-detail th{position:sticky;top:0;background:var(--panel);z-index:2;padding:7px 8px}
-#nmPage .nm-detail td{padding:5px 7px;vertical-align:top}
-#nmPage .nm-detail tr.nm-group td{background:var(--panel2);font-weight:700;color:var(--text);border-top:2px solid var(--border);padding:8px}
+#nmPage .nm-detail{max-height:520px;overflow:auto;border:1px solid var(--border);border-radius:8px;}
+#nmPage .nm-detail table{font-size:12px;table-layout:fixed;width:100%;}
+#nmPage .nm-detail th{position:sticky;top:0;background:var(--panel);z-index:2;padding:6px 7px;font-size:11px;}
+#nmPage .nm-detail td{padding:4px 7px;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;}
+#nmPage .nm-detail th:nth-child(1),#nmPage .nm-detail td:nth-child(1){width:9%;}
+#nmPage .nm-detail th:nth-child(2),#nmPage .nm-detail td:nth-child(2){width:6%;}
+#nmPage .nm-detail th:nth-child(3),#nmPage .nm-detail td:nth-child(3){width:14%;}
+#nmPage .nm-detail th:nth-child(4),#nmPage .nm-detail td:nth-child(4){width:14%;}
+#nmPage .nm-detail th:nth-child(5),#nmPage .nm-detail td:nth-child(5){width:21%;}
+#nmPage .nm-detail th:nth-child(6),#nmPage .nm-detail td:nth-child(6){width:10%;}
+#nmPage .nm-detail th:nth-child(7),#nmPage .nm-detail td:nth-child(7){width:6%;}
+#nmPage .nm-detail th:nth-child(8),#nmPage .nm-detail td:nth-child(8){width:6%;text-align:right;}
+#nmPage .nm-detail th:nth-child(9),#nmPage .nm-detail td:nth-child(9){width:8%;text-align:right;}
+#nmPage .nm-detail th:nth-child(10),#nmPage .nm-detail td:nth-child(10){width:9%;text-align:right;}
+#nmPage .nm-detail th:nth-child(11),#nmPage .nm-detail td:nth-child(11){width:8%;text-align:right;}
+#nmPage .nm-detail th:nth-child(12),#nmPage .nm-detail td:nth-child(12){width:9%;text-align:right;}
+#nmPage .nm-detail tr.nm-group td{background:var(--panel2);font-weight:700;color:var(--text);border-top:2px solid var(--border);padding:7px;white-space:normal;}
 #nmPage .nm-detail tr.nm-item td:first-child{color:var(--text2)}
 #nmPage .nm-detail tr.nm-item:nth-child(odd) td{background:rgba(255,255,255,.015)}
+#nmPage .nm-detail tr.nm-item:hover td{background:rgba(79,124,255,.08)}
 </style>
 
 </head>
@@ -292,10 +305,13 @@
       </div>
     </div>
     <div class="panel filterPanel">
-      <div><label>Поиск</label><input id="nmSearch" placeholder="Номенклатура / поставщик / ЭСФ" style="width:300px;"></div>
+      <div><label>Поиск</label><input id="nmSearch" placeholder="Номенклатура / поставщик / ЭСФ" style="width:260px;"></div>
       <div><label>С даты</label><input type="date" id="nmFrom"></div>
       <div><label>По дату</label><input type="date" id="nmTo"></div>
+      <div><label>Поставщик</label><select id="nmSupplierFilter" style="min-width:200px;"><option value="">Все поставщики</option></select></div>
+      <div><label>Покупатель</label><select id="nmBuyerFilter" style="min-width:200px;"><option value="">Все покупатели</option></select></div>
       <button class="btn secondary" id="nmClear">Сбросить</button>
+      <span id="nmResultInfo" style="font-size:12px;color:var(--text2);"></span>
     </div>
 
     <div class="cards" id="nmCards"></div>
@@ -1152,12 +1168,30 @@ function nmMoney(n){ return (n||0).toLocaleString("ru-RU",{maximumFractionDigits
 function nmFiltered(){
   const q=(document.getElementById("nmSearch").value||"").toLowerCase().trim();
   const from=document.getElementById("nmFrom").value, to=document.getElementById("nmTo").value;
+  const supSel=document.getElementById("nmSupplierFilter").value;
+  const buyerSel=document.getElementById("nmBuyerFilter").value;
   return nmRows.filter(x=>{
     const name=nmField(x,["Номенклатура","Наименование товара/услуги"]);
-    const sup=nmField(x,["Поставщик"]), inv=nmField(x,["СФ №","СЧЁТ-ФАКТУРА"]), buyer=nmField(x,["Покупатель"]);
-    const d=nmDate(nmField(x,["Дата СФ","дата СФ","Дата","Дата обработки"]));
-    return (!q || (name+" "+sup+" "+inv+" "+buyer).toLowerCase().includes(q)) && (!from||!d||d>=from) && (!to||!d||d<=to);
+    const sup=nmField(x,["Поставщик"]), inv=nmField(x,["Счёт-фактура №","СФ №","СЧЁТ-ФАКТУРА"]), buyer=nmField(x,["Покупатель"]);
+    const d=nmDate(nmField(x,["Дата счёт-фактуры","Дата СФ","дата СФ","Дата"]));
+    return (!q || (name+" "+sup+" "+inv+" "+buyer).toLowerCase().includes(q))
+      && (!from||!d||d>=from) && (!to||!d||d<=to)
+      && (!supSel || sup===supSel)
+      && (!buyerSel || buyer===buyerSel);
   });
+}
+function nmBuildFilterOptions(){
+  const sups=new Set(), buyers=new Set();
+  nmRows.forEach(x=>{
+    const s=nmField(x,["Поставщик"]), b=nmField(x,["Покупатель"]);
+    if(s) sups.add(s);
+    if(b) buyers.add(b);
+  });
+  const supSel=document.getElementById("nmSupplierFilter");
+  const buyerSel=document.getElementById("nmBuyerFilter");
+  const curSup=supSel.value, curBuyer=buyerSel.value;
+  supSel.innerHTML=`<option value="">Все поставщики</option>`+Array.from(sups).sort((a,b)=>a.localeCompare(b,"ru")).map(s=>`<option value="${s}" ${s===curSup?"selected":""}>${s}</option>`).join("");
+  buyerSel.innerHTML=`<option value="">Все покупатели</option>`+Array.from(buyers).sort((a,b)=>a.localeCompare(b,"ru")).map(b=>`<option value="${b}" ${b===curBuyer?"selected":""}>${b}</option>`).join("");
 }
 function renderNomenclature(){
   const items=nmFiltered();
@@ -1166,10 +1200,10 @@ function renderNomenclature(){
   items.forEach(x=>{
     const name=nmField(x,["Номенклатура","Наименование товара/услуги"])||"Без названия";
     const sup=nmField(x,["Поставщик"])||"Без поставщика";
-    const invNo=nmField(x,["СФ №","СЧЁТ-ФАКТУРА"]);
+    const invNo=nmField(x,["Счёт-фактура №","СФ №","СЧЁТ-ФАКТУРА"]);
     invNo&&inv.add(invNo); names.add(name); sups.add(sup);
     qty+=nmNum(nmField(x,["Количество","Кол-во","количество"]));
-    const a=nmNum(nmField(x,["Стоимость без НДС","Сумма без НДС"]));
+    const a=nmNum(nmField(x,["Стоимость поставки","Стоимость без НДС","Сумма без НДС"]));
     const b=nmNum(nmField(x,["Сумма НДС","НДС"]));
     const c=nmNum(nmField(x,["Стоимость с НДС","Сумма с НДС"]));
     noVat+=a; vat+=b; total+=c;
@@ -1186,14 +1220,15 @@ function renderNomenclature(){
   document.getElementById("nmTopSuppliers").innerHTML=top(supplier).map((x,i)=>`<div class="nm-list-row" data-rank="${i+1}"><span class="long-text" title="${x[0]}">${i+1}. ${x[0]}</span><b>${nmMoney(x[1])}</b></div>`).join("")||`<div style="color:var(--text2)">Нет данных</div>`;
   let detailHtml="", lastInv="";
   items.forEach((x,idx)=>{
-    const inv=nmField(x,["СФ №","СЧЁТ-ФАКТУРА"])||"Без номера ЭСФ";
+    const inv=nmField(x,["Счёт-фактура №","СФ №","СЧЁТ-ФАКТУРА"])||"Без номера ЭСФ";
     if(inv!==lastInv){
-      detailHtml+=`<tr class="nm-group"><td colspan="12">📄 ЭСФ № ${inv} · ${nmField(x,["Дата СФ","дата СФ","Дата"])} · ${nmField(x,["Поставщик"])}</td></tr>`;
+      detailHtml+=`<tr class="nm-group"><td colspan="12">📄 ЭСФ № ${inv} · ${nmField(x,["Дата счёт-фактуры","Дата СФ","дата СФ","Дата"])} · ${nmField(x,["Поставщик"])}</td></tr>`;
       lastInv=inv;
     }
-    detailHtml+=`<tr class="nm-item"><td>${nmField(x,["Дата СФ","дата СФ","Дата","Дата обработки"])}</td><td>${inv}</td><td>${nmField(x,["Поставщик"])}</td><td>${nmField(x,["Покупатель"])}</td><td title="${nmField(x,["Номенклатура","Наименование товара/услуги"])}">${nmField(x,["Номенклатура","Наименование товара/услуги"])}</td><td>${nmField(x,["ЕНКТУ","Код ЕНКТУ"])}</td><td>${nmField(x,["Ед. изм.","Ед."])}</td><td>${nmField(x,["Количество","Кол-во","количество"])}</td><td>${nmField(x,["Цена","цена"])}</td><td>${nmField(x,["Стоимость без НДС","Сумма без НДС"])}</td><td>${nmField(x,["Сумма НДС","НДС"])}</td><td>${nmField(x,["Стоимость с НДС","Сумма с НДС"])}</td></tr>`;
+    detailHtml+=`<tr class="nm-item"><td>${nmField(x,["Дата счёт-фактуры","Дата СФ","дата СФ","Дата"])}</td><td>${inv}</td><td title="${nmField(x,["Поставщик"])}">${nmField(x,["Поставщик"])}</td><td title="${nmField(x,["Покупатель"])}">${nmField(x,["Покупатель"])}</td><td title="${nmField(x,["Номенклатура","Наименование товара/услуги"])}">${nmField(x,["Номенклатура","Наименование товара/услуги"])}</td><td title="${nmField(x,["ЕНКТУ","Код ЕНКТУ"])}">${nmField(x,["ЕНКТУ","Код ЕНКТУ"])}</td><td>${nmField(x,["Ед. изм.","Ед."])}</td><td>${nmField(x,["Количество","Кол-во","количество"])}</td><td>${nmField(x,["Цена","цена"])}</td><td>${nmField(x,["Стоимость поставки","Стоимость без НДС","Сумма без НДС"])}</td><td>${nmField(x,["Сумма НДС","НДС"])}</td><td>${nmField(x,["Стоимость с НДС","Сумма с НДС"])}</td></tr>`;
   });
   document.getElementById("nmBody").innerHTML=detailHtml||`<tr><td colspan="12" style="color:var(--text2)">Нет данных</td></tr>`;
+  document.getElementById("nmResultInfo").textContent=`Найдено позиций: ${fmt(items.length)}`;
 }
 async function loadNomenclatureOnly(){
   document.getElementById("nmErr").textContent="Загрузка…";
@@ -1202,7 +1237,9 @@ async function loadNomenclatureOnly(){
     if(!rows.length){ nmRows=[]; renderNomenclature(); document.getElementById("nmErr").textContent="Лист «Номенклатура» пуст."; return; }
     const map=colMap(rows[0]); nmRows=rows.slice(1).filter(r=>r&&r.length).map(r=>({row:r,map}));
     document.getElementById("nmDateLabel").textContent="Обновлено: "+new Date().toLocaleString("ru-RU")+" · строк: "+fmt(nmRows.length);
-    document.getElementById("nmErr").textContent=""; renderNomenclature();
+    document.getElementById("nmErr").textContent="";
+    nmBuildFilterOptions();
+    renderNomenclature();
   }catch(e){ document.getElementById("nmErr").textContent="Ошибка загрузки «Номенклатура»: "+e.message; }
 }
 function openNomenclaturePage(){
@@ -1216,7 +1253,16 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.getElementById("nmSearch").oninput=renderNomenclature;
   document.getElementById("nmFrom").onchange=renderNomenclature;
   document.getElementById("nmTo").onchange=renderNomenclature;
-  document.getElementById("nmClear").onclick=()=>{document.getElementById("nmSearch").value="";document.getElementById("nmFrom").value="";document.getElementById("nmTo").value="";renderNomenclature();};
+  document.getElementById("nmSupplierFilter").onchange=renderNomenclature;
+  document.getElementById("nmBuyerFilter").onchange=renderNomenclature;
+  document.getElementById("nmClear").onclick=()=>{
+    document.getElementById("nmSearch").value="";
+    document.getElementById("nmFrom").value="";
+    document.getElementById("nmTo").value="";
+    document.getElementById("nmSupplierFilter").value="";
+    document.getElementById("nmBuyerFilter").value="";
+    renderNomenclature();
+  };
   document.querySelectorAll("#nmPage .nmToggle").forEach(btn=>btn.onclick=()=>{const el=document.getElementById(btn.dataset.target); el.classList.toggle("hidden"); btn.textContent=el.classList.contains("hidden")?"Развернуть":"Свернуть";});
   document.querySelectorAll("#nmPage .nm-more").forEach(btn=>btn.onclick=()=>{const list=document.getElementById(btn.dataset.list); const expanded=list.classList.toggle("expanded"); list.querySelectorAll(".nm-list-row").forEach((r,i)=>{if(i>=10) r.classList.toggle("expanded",expanded);}); btn.textContent=expanded?"Свернуть":"Показать ещё 10";});
 });
