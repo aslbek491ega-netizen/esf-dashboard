@@ -332,6 +332,26 @@
     </div>
 
     <div class="panel" style="margin-bottom:20px;">
+      <h3>📂 По категориям (ЕНКТУ)</h3>
+      <div id="nmCategoryList" class="nm-list"></div>
+    </div>
+
+    <div class="panel" style="margin-bottom:20px;">
+      <h3>📈 Анализ цены по товару/услуге</h3>
+      <div class="filterPanel" style="margin-bottom:14px;">
+        <div style="flex:1;min-width:280px;">
+          <label>Товар/услуга</label>
+          <select id="nmItemSelect" style="width:100%;"></select>
+        </div>
+      </div>
+      <div id="nmPriceChartBox" style="display:none;">
+        <canvas id="nmPriceChart" height="90"></canvas>
+        <h3 style="margin-top:18px;">Сравнение по поставщикам</h3>
+        <div id="nmSupplierCompare" style="overflow:auto;"></div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:20px;">
       <h3>📋 Детализация по ЭСФ и номенклатуре</h3>
       <button class="collapse-toggle nmToggle" type="button" data-target="nmDetailWrap">Свернуть</button>
       <div id="nmDetailWrap" class="nm-detail">
@@ -1202,10 +1222,15 @@ function nmBuildFilterOptions(){
   supSel.innerHTML=`<option value="">Все поставщики</option>`+Array.from(sups).sort((a,b)=>a.localeCompare(b,"ru")).map(s=>`<option value="${s}" ${s===curSup?"selected":""}>${s}</option>`).join("");
   buyerSel.innerHTML=`<option value="">Все покупатели</option>`+Array.from(buyers).sort((a,b)=>a.localeCompare(b,"ru")).map(b=>`<option value="${b}" ${b===curBuyer?"selected":""}>${b}</option>`).join("");
 }
+function nmCategoryLabel(enktuField){
+  const s=String(enktuField||"").trim();
+  const idx=s.indexOf(" - ");
+  return idx>=0 ? s.slice(idx+3).trim() : (s||"Без категории");
+}
 function renderNomenclature(){
   const items=nmFiltered();
   const inv=new Set(), names=new Set(), sups=new Set(); let qty=0,noVat=0,vat=0,total=0;
-  const prod={}, supplier={};
+  const prod={}, supplier={}, cats={};
   items.forEach(x=>{
     const name=nmField(x,["Номенклатура","Наименование товара/услуги"])||"Без названия";
     const sup=nmField(x,["Поставщик"])||"Без поставщика";
@@ -1217,6 +1242,8 @@ function renderNomenclature(){
     const c=nmNum(nmField(x,["Стоимость с НДС","Сумма с НДС"]));
     noVat+=a; vat+=b; total+=c;
     prod[name]=(prod[name]||0)+c; supplier[sup]=(supplier[sup]||0)+c;
+    const cat=nmCategoryLabel(nmField(x,["ЕНКТУ","Код ЕНКТУ"]));
+    cats[cat]=(cats[cat]||0)+c;
   });
   const avg=inv.size?total/inv.size:0;
   document.getElementById("nmCards").innerHTML=[
@@ -1227,6 +1254,7 @@ function renderNomenclature(){
   const top=(obj)=>Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,20);
   document.getElementById("nmTopProducts").innerHTML=top(prod).map((x,i)=>`<div class="nm-list-row" data-rank="${i+1}"><span class="long-text" title="${x[0]}">${i+1}. ${x[0]}</span><b>${nmMoney(x[1])}</b></div>`).join("")||`<div style="color:var(--text2)">Нет данных</div>`;
   document.getElementById("nmTopSuppliers").innerHTML=top(supplier).map((x,i)=>`<div class="nm-list-row" data-rank="${i+1}"><span class="long-text" title="${x[0]}">${i+1}. ${x[0]}</span><b>${nmMoney(x[1])}</b></div>`).join("")||`<div style="color:var(--text2)">Нет данных</div>`;
+  document.getElementById("nmCategoryList").innerHTML=top(cats).map((x,i)=>`<div class="nm-list-row" data-rank="${i+1}"><span class="long-text" title="${x[0]}">${i+1}. ${x[0]}</span><b>${nmMoney(x[1])}</b></div>`).join("")||`<div style="color:var(--text2)">Нет данных</div>`;
   let detailHtml="", lastInv="";
   items.forEach((x,idx)=>{
     const inv=nmField(x,["Счёт-фактура №","СФ №","СЧЁТ-ФАКТУРА"])||"Без номера ЭСФ";
@@ -1239,6 +1267,98 @@ function renderNomenclature(){
   document.getElementById("nmBody").innerHTML=detailHtml||`<tr><td colspan="12" style="color:var(--text2)">Нет данных</td></tr>`;
   document.getElementById("nmResultInfo").textContent=`Найдено позиций: ${fmt(items.length)}`;
 }
+
+// =========================================
+// ТОВАР НАРX ДИНАМИКАСИ ВА СОТУВЧИЛАР СОЛИШТИРУVI
+// =========================================
+function nmBuildItemSelect(){
+  const sel=document.getElementById("nmItemSelect");
+  const cur=sel.value;
+  const s=new Set();
+  nmRows.forEach(x=>{ const n=nmField(x,["Номенклатура","Наименование товара/услуги"]); if(n) s.add(n); });
+  const names=Array.from(s).sort((a,b)=>a.localeCompare(b,"ru"));
+  sel.innerHTML=`<option value="">— выберите товар/услугу —</option>`+
+    names.map(n=>`<option value="${n}" ${n===cur?"selected":""}>${n}</option>`).join("");
+}
+
+let nmPriceChart;
+function renderItemAnalysis(){
+  const name=document.getElementById("nmItemSelect").value;
+  const box=document.getElementById("nmPriceChartBox");
+  const supBox=document.getElementById("nmSupplierCompare");
+
+  if(!name){
+    if(nmPriceChart){ nmPriceChart.destroy(); nmPriceChart=null; }
+    box.style.display="none";
+    return;
+  }
+  box.style.display="block";
+
+  const rows=nmRows.filter(x=>nmField(x,["Номенклатура","Наименование товара/услуги"])===name);
+
+  // Ойлик уртача нарx ва ойлик умумий сумма
+  const monthly={};
+  rows.forEach(x=>{
+    const d=nmDate(nmField(x,["Дата счёт-фактуры","Дата СФ","дата СФ","Дата"]));
+    if(!d) return;
+    const mk=d.slice(0,7);
+    const price=nmNum(nmField(x,["Цена","цена"]));
+    const total=nmNum(nmField(x,["Стоимость с НДС","Сумма с НДС"]));
+    if(!monthly[mk]) monthly[mk]={priceSum:0,count:0,total:0};
+    monthly[mk].priceSum+=price; monthly[mk].count++; monthly[mk].total+=total;
+  });
+  const entries=Object.entries(monthly).sort((a,b)=>a[0].localeCompare(b[0]));
+  const labels=entries.map(([k])=>{ const [y,m]=k.split("-"); return `${m}.${y}`; });
+  const avgPrices=entries.map(([,v])=>Math.round(v.priceSum/v.count));
+  const totals=entries.map(([,v])=>Math.round(v.total));
+
+  const ctx=document.getElementById("nmPriceChart");
+  if(nmPriceChart) nmPriceChart.destroy();
+  nmPriceChart=new Chart(ctx,{
+    data:{
+      labels,
+      datasets:[
+        {type:"line",label:"Средняя цена",data:avgPrices,yAxisID:"y1",borderColor:"#f2b134",backgroundColor:"#f2b134",tension:.25,borderWidth:2},
+        {type:"bar",label:"Сумма закупок",data:totals,yAxisID:"y2",backgroundColor:"rgba(79,124,255,.55)"}
+      ]
+    },
+    options:{
+      responsive:true,
+      plugins:{legend:{position:"bottom",labels:{color:"#eef1f8",boxWidth:10,font:{size:11}}}},
+      scales:{
+        x:{ticks:{color:"#8b93a8"}},
+        y1:{position:"left",ticks:{color:"#f2b134"},title:{display:true,text:"Цена",color:"#f2b134"}},
+        y2:{position:"right",grid:{drawOnChartArea:false},ticks:{color:"#4f7cff"},title:{display:true,text:"Сумма",color:"#4f7cff"}}
+      }
+    }
+  });
+
+  // Сотувчилар буйича солиштируv
+  const bySup={};
+  rows.forEach(x=>{
+    const sup=nmField(x,["Поставщик"])||"Неизвестно";
+    const price=nmNum(nmField(x,["Цена","цена"]));
+    if(!bySup[sup]) bySup[sup]={min:price,max:price,sum:0,count:0};
+    bySup[sup].min=Math.min(bySup[sup].min,price);
+    bySup[sup].max=Math.max(bySup[sup].max,price);
+    bySup[sup].sum+=price; bySup[sup].count++;
+  });
+  const supEntries=Object.entries(bySup).sort((a,b)=>(a[1].sum/a[1].count)-(b[1].sum/b[1].count));
+  supBox.innerHTML = supEntries.length ? `
+    <table>
+      <thead><tr><th>Поставщик</th><th>Мин. цена</th><th>Сред. цена</th><th>Макс. цена</th><th>Закупок</th></tr></thead>
+      <tbody>
+        ${supEntries.map(([sup,v])=>`<tr>
+          <td class="long-text" title="${sup}">${sup}</td>
+          <td>${nmMoney(v.min)}</td>
+          <td>${nmMoney(Math.round(v.sum/v.count))}</td>
+          <td>${nmMoney(v.max)}</td>
+          <td>${v.count}</td>
+        </tr>`).join("")}
+      </tbody>
+    </table>` : `<div style="color:var(--text2);font-size:13px">Нет данных</div>`;
+}
+
 async function loadNomenclatureOnly(){
   document.getElementById("nmErr").textContent="Загрузка…";
   try{
@@ -1248,6 +1368,7 @@ async function loadNomenclatureOnly(){
     document.getElementById("nmDateLabel").textContent="Обновлено: "+new Date().toLocaleString("ru-RU")+" · строк: "+fmt(nmRows.length);
     document.getElementById("nmErr").textContent="";
     nmBuildFilterOptions();
+    nmBuildItemSelect();
     renderNomenclature();
   }catch(e){ document.getElementById("nmErr").textContent="Ошибка загрузки «Номенклатура»: "+e.message; }
 }
@@ -1282,6 +1403,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   };
   document.getElementById("nmSupplierFilter").onchange=renderNomenclature;
   document.getElementById("nmBuyerFilter").onchange=renderNomenclature;
+  document.getElementById("nmItemSelect").onchange=renderItemAnalysis;
   document.getElementById("nmClear").onclick=()=>{
     document.getElementById("nmSearch").value="";
     document.getElementById("nmFrom").value="";
