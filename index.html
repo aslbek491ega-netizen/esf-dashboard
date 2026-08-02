@@ -308,6 +308,8 @@
       <div><label>Поиск</label><input id="nmSearch" placeholder="Номенклатура / поставщик / ЭСФ" style="width:260px;"></div>
       <div><label>С даты</label><input type="date" id="nmFrom"></div>
       <div><label>По дату</label><input type="date" id="nmTo"></div>
+      <button class="btn secondary" id="nmThisMonth" style="margin-top:18px;">Этот месяц</button>
+      <button class="btn secondary" id="nmAllTime" style="margin-top:18px;">Весь период</button>
       <div><label>Поставщик</label><select id="nmSupplierFilter" style="min-width:200px;"><option value="">Все поставщики</option></select></div>
       <div><label>Покупатель</label><select id="nmBuyerFilter" style="min-width:200px;"><option value="">Все покупатели</option></select></div>
       <button class="btn secondary" id="nmClear">Сбросить</button>
@@ -1163,7 +1165,14 @@ function nmField(item,names){
   return "";
 }
 function nmNum(v){ return parseAmount(String(v||"").replace(/\s/g,"").replace(/,/g,".")); }
-function nmDate(v){ const m=String(v||"").match(/(\d{2})\.(\d{2})\.(\d{4})/); return m ? `${m[3]}-${m[2]}-${m[1]}` : ""; }
+function nmDate(v){
+  const s=String(v||"");
+  let m=s.match(/(\d{2})\.(\d{2})\.(\d{4})/);
+  if(m) return `${m[3]}-${m[2]}-${m[1]}`;
+  m=s.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if(m) return `${m[1]}-${m[2]}-${m[3]}`;
+  return "";
+}
 function nmMoney(n){ return (n||0).toLocaleString("ru-RU",{maximumFractionDigits:2})+" сум"; }
 function nmFiltered(){
   const q=(document.getElementById("nmSearch").value||"").toLowerCase().trim();
@@ -1175,7 +1184,7 @@ function nmFiltered(){
     const sup=nmField(x,["Поставщик"]), inv=nmField(x,["Счёт-фактура №","СФ №","СЧЁТ-ФАКТУРА"]), buyer=nmField(x,["Покупатель"]);
     const d=nmDate(nmField(x,["Дата счёт-фактуры","Дата СФ","дата СФ","Дата"]));
     return (!q || (name+" "+sup+" "+inv+" "+buyer).toLowerCase().includes(q))
-      && (!from||!d||d>=from) && (!to||!d||d<=to)
+      && (!from || (d && d>=from)) && (!to || (d && d<=to))
       && (!supSel || sup===supSel)
       && (!buyerSel || buyer===buyerSel);
   });
@@ -1244,6 +1253,12 @@ async function loadNomenclatureOnly(){
 }
 function openNomenclaturePage(){
   document.getElementById("nmPage").classList.remove("hidden");
+  if (!document.getElementById("nmFrom").value && !document.getElementById("nmTo").value){
+    const now=new Date();
+    const first=new Date(now.getFullYear(), now.getMonth(), 1);
+    document.getElementById("nmFrom").value=first.toISOString().slice(0,10);
+    document.getElementById("nmTo").value=now.toISOString().slice(0,10);
+  }
   loadNomenclatureOnly();
 }
 function closeNomenclaturePage(){ document.getElementById("nmPage").classList.add("hidden"); }
@@ -1253,6 +1268,18 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.getElementById("nmSearch").oninput=renderNomenclature;
   document.getElementById("nmFrom").onchange=renderNomenclature;
   document.getElementById("nmTo").onchange=renderNomenclature;
+  document.getElementById("nmThisMonth").onclick=()=>{
+    const now=new Date();
+    const first=new Date(now.getFullYear(), now.getMonth(), 1);
+    document.getElementById("nmFrom").value=first.toISOString().slice(0,10);
+    document.getElementById("nmTo").value=now.toISOString().slice(0,10);
+    renderNomenclature();
+  };
+  document.getElementById("nmAllTime").onclick=()=>{
+    document.getElementById("nmFrom").value="";
+    document.getElementById("nmTo").value="";
+    renderNomenclature();
+  };
   document.getElementById("nmSupplierFilter").onchange=renderNomenclature;
   document.getElementById("nmBuyerFilter").onchange=renderNomenclature;
   document.getElementById("nmClear").onclick=()=>{
