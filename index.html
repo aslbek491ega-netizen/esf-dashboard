@@ -337,10 +337,11 @@
     </div>
 
     <div class="panel" style="margin-bottom:20px;">
-      <h3>📈 Анализ цены по товару/услуге</h3>
+      <h3>📈 Анализ цены по товару/услуге (по коду ЕНКТУ)</h3>
+      <p style="color:var(--text2);font-size:12px;margin:-8px 0 12px;">Группировка по коду ЕНКТУ, а не по тексту названия — одинаковый товар с разным написанием (напр. "сахар"/"шакар") учитывается как один.</p>
       <div class="filterPanel" style="margin-bottom:14px;">
         <div style="flex:1;min-width:280px;">
-          <label>Товар/услуга</label>
+          <label>Товар/услуга (ЕНКТУ)</label>
           <select id="nmItemSelect" style="width:100%;"></select>
         </div>
       </div>
@@ -1194,6 +1195,7 @@ function nmDate(v){
   return "";
 }
 function nmMoney(n){ return (n||0).toLocaleString("ru-RU",{maximumFractionDigits:2})+" сум"; }
+function nmKey(name,inn){ return inn?("ИНН:"+inn):("Имя:"+name); }
 function nmFiltered(){
   const q=(document.getElementById("nmSearch").value||"").toLowerCase().trim();
   const from=document.getElementById("nmFrom").value, to=document.getElementById("nmTo").value;
@@ -1201,59 +1203,68 @@ function nmFiltered(){
   const buyerSel=document.getElementById("nmBuyerFilter").value;
   return nmRows.filter(x=>{
     const name=nmField(x,["Номенклатура","Наименование товара/услуги"]);
-    const sup=nmField(x,["Поставщик"]), inv=nmField(x,["Счёт-фактура №","СФ №","СЧЁТ-ФАКТУРА"]), buyer=nmField(x,["Покупатель"]);
+    const sup=nmField(x,["Поставщик"]), supInn=nmField(x,["ИНН поставщика"]);
+    const inv=nmField(x,["Счёт-фактура №","СФ №","СЧЁТ-ФАКТУРА"]);
+    const buyer=nmField(x,["Покупатель"]), buyerInn=nmField(x,["ИНН покупателя"]);
     const d=nmDate(nmField(x,["Дата счёт-фактуры","Дата СФ","дата СФ","Дата"]));
     return (!q || (name+" "+sup+" "+inv+" "+buyer).toLowerCase().includes(q))
       && (!from || (d && d>=from)) && (!to || (d && d<=to))
-      && (!supSel || sup===supSel)
-      && (!buyerSel || buyer===buyerSel);
+      && (!supSel || nmKey(sup,supInn)===supSel)
+      && (!buyerSel || nmKey(buyer,buyerInn)===buyerSel);
   });
 }
 function nmBuildFilterOptions(){
-  const sups=new Set(), buyers=new Set();
+  const sups={}, buyers={};
   nmRows.forEach(x=>{
-    const s=nmField(x,["Поставщик"]), b=nmField(x,["Покупатель"]);
-    if(s) sups.add(s);
-    if(b) buyers.add(b);
+    const s=nmField(x,["Поставщик"]), sInn=nmField(x,["ИНН поставщика"]);
+    const b=nmField(x,["Покупатель"]), bInn=nmField(x,["ИНН покупателя"]);
+    if(s){ const k=nmKey(s,sInn); if(!sups[k]||s.length>sups[k].length) sups[k]=s; }
+    if(b){ const k=nmKey(b,bInn); if(!buyers[k]||b.length>buyers[k].length) buyers[k]=b; }
   });
   const supSel=document.getElementById("nmSupplierFilter");
   const buyerSel=document.getElementById("nmBuyerFilter");
   const curSup=supSel.value, curBuyer=buyerSel.value;
-  supSel.innerHTML=`<option value="">Все поставщики</option>`+Array.from(sups).sort((a,b)=>a.localeCompare(b,"ru")).map(s=>`<option value="${s}" ${s===curSup?"selected":""}>${s}</option>`).join("");
-  buyerSel.innerHTML=`<option value="">Все покупатели</option>`+Array.from(buyers).sort((a,b)=>a.localeCompare(b,"ru")).map(b=>`<option value="${b}" ${b===curBuyer?"selected":""}>${b}</option>`).join("");
-}
-function nmCategoryLabel(enktuField){
-  const s=String(enktuField||"").trim();
-  const idx=s.indexOf(" - ");
-  return idx>=0 ? s.slice(idx+3).trim() : (s||"Без категории");
+  const sortEntries=(obj)=>Object.entries(obj).sort((a,b)=>a[1].localeCompare(b[1],"ru"));
+  supSel.innerHTML=`<option value="">Все поставщики</option>`+sortEntries(sups).map(([k,label])=>`<option value="${k}" ${k===curSup?"selected":""}>${label}</option>`).join("");
+  buyerSel.innerHTML=`<option value="">Все покупатели</option>`+sortEntries(buyers).map(([k,label])=>`<option value="${k}" ${k===curBuyer?"selected":""}>${label}</option>`).join("");
 }
 function renderNomenclature(){
   const items=nmFiltered();
-  const inv=new Set(), names=new Set(), sups=new Set(); let qty=0,noVat=0,vat=0,total=0;
-  const prod={}, supplier={}, cats={};
+  const inv=new Set(), names=new Set(); let qty=0,noVat=0,vat=0,total=0;
+  const prod={}, supplier={}, supplierLabel={}, cats={};
+  const buyerKeys=new Set(), supplierKeys=new Set();
   items.forEach(x=>{
     const name=nmField(x,["Номенклатура","Наименование товара/услуги"])||"Без названия";
-    const sup=nmField(x,["Поставщик"])||"Без поставщика";
+    const supName=nmField(x,["Поставщик"])||"Без поставщика";
+    const supInn=nmField(x,["ИНН поставщика"]);
+    const supKey=supInn?("ИНН:"+supInn):("Имя:"+supName);
+    const buyName=nmField(x,["Покупатель"])||"Без покупателя";
+    const buyInn=nmField(x,["ИНН покупателя"]);
+    const buyKey=buyInn?("ИНН:"+buyInn):("Имя:"+buyName);
     const invNo=nmField(x,["Счёт-фактура №","СФ №","СЧЁТ-ФАКТУРА"]);
-    invNo&&inv.add(invNo); names.add(name); sups.add(sup);
+    invNo&&inv.add(invNo); names.add(name);
+    supplierKeys.add(supKey); buyerKeys.add(buyKey);
     qty+=nmNum(nmField(x,["Количество","Кол-во","количество"]));
     const a=nmNum(nmField(x,["Стоимость поставки","Стоимость без НДС","Сумма без НДС"]));
     const b=nmNum(nmField(x,["Сумма НДС","НДС"]));
     const c=nmNum(nmField(x,["Стоимость с НДС","Сумма с НДС"]));
     noVat+=a; vat+=b; total+=c;
-    prod[name]=(prod[name]||0)+c; supplier[sup]=(supplier[sup]||0)+c;
-    const cat=nmCategoryLabel(nmField(x,["ЕНКТУ","Код ЕНКТУ"]));
+    prod[name]=(prod[name]||0)+c;
+    supplier[supKey]=(supplier[supKey]||0)+c;
+    if(!supplierLabel[supKey]||supName.length>supplierLabel[supKey].length) supplierLabel[supKey]=supName;
+    // Категория — тулик ЕНКТУ (код + тавsif), кискартирилmasdan
+    const cat=nmField(x,["ЕНКТУ","Код ЕНКТУ"])||"Без категории";
     cats[cat]=(cats[cat]||0)+c;
   });
   const avg=inv.size?total/inv.size:0;
   document.getElementById("nmCards").innerHTML=[
-    ["ЭСФ",inv.size],["Позиций",items.length],["Номенклатур",names.size],["Поставщиков",sups.size],
+    ["ЭСФ",inv.size],["Позиций",items.length],["Номенклатур",names.size],["Поставщиков",supplierKeys.size],["Покупателей",buyerKeys.size],
     ["Количество",qty],["Без НДС",nmMoney(noVat)],["НДС",nmMoney(vat)],["С НДС",nmMoney(total)],
     ["Средняя сумма 1 ЭСФ",nmMoney(avg)]
   ].map(x=>`<div class="card"><div class="label">${x[0]}</div><div class="value">${typeof x[1]==='number'?fmt(x[1]):x[1]}</div></div>`).join("");
   const top=(obj)=>Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,20);
   document.getElementById("nmTopProducts").innerHTML=top(prod).map((x,i)=>`<div class="nm-list-row" data-rank="${i+1}"><span class="long-text" title="${x[0]}">${i+1}. ${x[0]}</span><b>${nmMoney(x[1])}</b></div>`).join("")||`<div style="color:var(--text2)">Нет данных</div>`;
-  document.getElementById("nmTopSuppliers").innerHTML=top(supplier).map((x,i)=>`<div class="nm-list-row" data-rank="${i+1}"><span class="long-text" title="${x[0]}">${i+1}. ${x[0]}</span><b>${nmMoney(x[1])}</b></div>`).join("")||`<div style="color:var(--text2)">Нет данных</div>`;
+  document.getElementById("nmTopSuppliers").innerHTML=top(supplier).map((x,i)=>`<div class="nm-list-row" data-rank="${i+1}"><span class="long-text" title="${supplierLabel[x[0]]}">${i+1}. ${supplierLabel[x[0]]}</span><b>${nmMoney(x[1])}</b></div>`).join("")||`<div style="color:var(--text2)">Нет данных</div>`;
   document.getElementById("nmCategoryList").innerHTML=top(cats).map((x,i)=>`<div class="nm-list-row" data-rank="${i+1}"><span class="long-text" title="${x[0]}">${i+1}. ${x[0]}</span><b>${nmMoney(x[1])}</b></div>`).join("")||`<div style="color:var(--text2)">Нет данных</div>`;
   let detailHtml="", lastInv="";
   items.forEach((x,idx)=>{
@@ -1271,30 +1282,41 @@ function renderNomenclature(){
 // =========================================
 // ТОВАР НАРX ДИНАМИКАСИ ВА СОТУВЧИЛАР СОЛИШТИРУVI
 // =========================================
+function nmEnktuCode(field){
+  const s=String(field||"").trim();
+  const m=s.match(/^(\d+)/);
+  return m ? m[1] : s; // код топилмаса, бутун матnni "код" сифатида ишлатамиз (захира)
+}
 function nmBuildItemSelect(){
   const sel=document.getElementById("nmItemSelect");
   const cur=sel.value;
-  const s=new Set();
-  nmRows.forEach(x=>{ const n=nmField(x,["Номенклатура","Наименование товара/услуги"]); if(n) s.add(n); });
-  const names=Array.from(s).sort((a,b)=>a.localeCompare(b,"ru"));
-  sel.innerHTML=`<option value="">— выберите товар/услугу —</option>`+
-    names.map(n=>`<option value="${n}" ${n===cur?"selected":""}>${n}</option>`).join("");
+  const codes={};
+  nmRows.forEach(x=>{
+    const enktu=nmField(x,["ЕНКТУ","Код ЕНКТУ"]);
+    if(!enktu) return;
+    const code=nmEnktuCode(enktu);
+    if(!codes[code]) codes[code]=enktu;
+    else if(enktu.length>codes[code].length) codes[code]=enktu;
+  });
+  const entries=Object.entries(codes).sort((a,b)=>a[1].localeCompare(b[1],"ru"));
+  sel.innerHTML=`<option value="">— выберите товар/услугу (по коду ЕНКТУ) —</option>`+
+    entries.map(([code,label])=>`<option value="${code}" ${code===cur?"selected":""}>${label}</option>`).join("");
 }
 
 let nmPriceChart;
 function renderItemAnalysis(){
-  const name=document.getElementById("nmItemSelect").value;
+  const code=document.getElementById("nmItemSelect").value;
   const box=document.getElementById("nmPriceChartBox");
   const supBox=document.getElementById("nmSupplierCompare");
 
-  if(!name){
+  if(!code){
     if(nmPriceChart){ nmPriceChart.destroy(); nmPriceChart=null; }
     box.style.display="none";
     return;
   }
   box.style.display="block";
 
-  const rows=nmRows.filter(x=>nmField(x,["Номенклатура","Наименование товара/услуги"])===name);
+  const rows=nmRows.filter(x=>nmEnktuCode(nmField(x,["ЕНКТУ","Код ЕНКТУ"]))===code);
 
   // Ойлик уртача нарx ва ойлик умумий сумма
   const monthly={};
