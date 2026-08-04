@@ -1180,8 +1180,26 @@ document.getElementById("printBtn").onclick = () => window.print();
 
 <script id="nm-only-js">
 let nmRows=[];
+function nmNormKey(s){
+  return String(s||"")
+    .toLowerCase()
+    .replace(/ё/g,"е")
+    .replace(/[^a-zа-я0-9]+/gi,"");
+}
 function nmField(item,names){
-  for(const n of names){ const i=item.map[n]; if(i!==undefined) return (item.row[i]||"").trim(); }
+  // First: exact header match.
+  for(const n of names){
+    const i=item.map[n];
+    if(i!==undefined) return String(item.row[i]||"").trim();
+  }
+  // Second: normalized header match (handles spaces, punctuation and case differences).
+  const wanted=names.map(nmNormKey);
+  for(const k of Object.keys(item.map||{})){
+    if(wanted.includes(nmNormKey(k))){
+      const i=item.map[k];
+      if(i!==undefined) return String(item.row[i]||"").trim();
+    }
+  }
   return "";
 }
 function nmNum(v){ return parseAmount(String(v||"").replace(/\s/g,"").replace(/,/g,".")); }
@@ -1196,22 +1214,40 @@ function nmDate(v){
 function nmMoney(n){ return (n||0).toLocaleString("ru-RU",{maximumFractionDigits:2})+" сум"; }
 function nmEntityINN(row, type){
   const buyer = type === "buyer";
-  const fields = buyer
-    ? ["Покупатель ИНН","ИНН покупателя","Покупатель ИНН/ПИНФЛ","ИНН Покупателя","ИНН Покупатель"]
-    : ["Поставщик ИНН","ИНН поставщика","Поставщик ИНН/ПИНФЛ","ИНН Поставщика","ИНН Поставщик"];
-  const v = nmField(row, fields);
-  return String(v||"").replace(/\\s+/g,"").trim();
+  const exact = buyer
+    ? ["Покупатель ИНН","ИНН покупателя","Покупатель ИНН/ПИНФЛ","ИНН Покупателя","ИНН Покупатель","ИНН покупателя/ПИНФЛ"]
+    : ["Поставщик ИНН","ИНН поставщика","Поставщик ИНН/ПИНФЛ","ИНН Поставщика","ИНН Поставщик","ИНН поставщика/ПИНФЛ"];
+
+  let v = nmField(row, exact);
+  if(v) return String(v).replace(/\s+/g,"").trim();
+
+  // Robust fallback: inspect every header and find the column that contains
+  // both the entity word and INN. This handles variants such as
+  // "ИНН Покупателя", "Покупатель (ИНН)", extra spaces, etc.
+  const keys = Object.keys(row.map||{});
+  for(const k of keys){
+    const nk=nmNormKey(k);
+    const hasInn=nk.includes("инн");
+    const hasEntity=buyer
+      ? (nk.includes("покуп") || nk.includes("получател"))
+      : (nk.includes("постав") || nk.includes("продав"));
+    if(hasInn && hasEntity){
+      const i=row.map[k];
+      const val=String(row.row[i]||"").replace(/\s+/g,"").trim();
+      if(val) return val;
+    }
+  }
+  return "";
 }
 function nmEntityName(row, type){
   return nmField(row, type === "buyer"
-    ? ["Покупатель"]
-    : ["Поставщик","Продавец"]) || "Неизвестно";
+    ? ["Покупатель","Покупатель наименование","Наименование покупателя"]
+    : ["Поставщик","Продавец","Поставщик наименование","Наименование поставщика"]) || "Неизвестно";
 }
 function nmEntityKey(row, type){
   const inn = nmEntityINN(row, type);
   if(inn) return "INN:"+inn;
-  // Только если ИНН отсутствует — временный fallback по имени.
-  return "NAME:"+nmEntityName(row,type).trim().toLowerCase().replace(/\\s+/g," ");
+  return "NAME:"+nmNormKey(nmEntityName(row,type));
 }
 
 function nmFiltered(){
