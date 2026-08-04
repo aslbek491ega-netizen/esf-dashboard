@@ -1194,6 +1194,26 @@ function nmDate(v){
   return "";
 }
 function nmMoney(n){ return (n||0).toLocaleString("ru-RU",{maximumFractionDigits:2})+" сум"; }
+function nmEntityINN(row, type){
+  const buyer = type === "buyer";
+  const fields = buyer
+    ? ["Покупатель ИНН","ИНН покупателя","Покупатель ИНН/ПИНФЛ","ИНН Покупателя","ИНН Покупатель"]
+    : ["Поставщик ИНН","ИНН поставщика","Поставщик ИНН/ПИНФЛ","ИНН Поставщика","ИНН Поставщик"];
+  const v = nmField(row, fields);
+  return String(v||"").replace(/\\s+/g,"").trim();
+}
+function nmEntityName(row, type){
+  return nmField(row, type === "buyer"
+    ? ["Покупатель"]
+    : ["Поставщик","Продавец"]) || "Неизвестно";
+}
+function nmEntityKey(row, type){
+  const inn = nmEntityINN(row, type);
+  if(inn) return "INN:"+inn;
+  // Только если ИНН отсутствует — временный fallback по имени.
+  return "NAME:"+nmEntityName(row,type).trim().toLowerCase().replace(/\\s+/g," ");
+}
+
 function nmFiltered(){
   const q=(document.getElementById("nmSearch").value||"").toLowerCase().trim();
   const from=document.getElementById("nmFrom").value, to=document.getElementById("nmTo").value;
@@ -1201,26 +1221,39 @@ function nmFiltered(){
   const buyerSel=document.getElementById("nmBuyerFilter").value;
   return nmRows.filter(x=>{
     const name=nmField(x,["Номенклатура","Наименование товара/услуги"]);
-    const sup=nmField(x,["Поставщик"]), inv=nmField(x,["Счёт-фактура №","СФ №","СЧЁТ-ФАКТУРА"]), buyer=nmField(x,["Покупатель"]);
+    const sup=nmEntityName(x,"supplier"), buyer=nmEntityName(x,"buyer");
+    const supInn=nmEntityINN(x,"supplier"), buyerInn=nmEntityINN(x,"buyer");
+    const inv=nmField(x,["Счёт-фактура №","СФ №","СЧЁТ-ФАКТУРА"]);
     const d=nmDate(nmField(x,["Дата счёт-фактуры","Дата СФ","дата СФ","Дата"]));
-    return (!q || (name+" "+sup+" "+inv+" "+buyer).toLowerCase().includes(q))
+    return (!q || (name+" "+sup+" "+supInn+" "+inv+" "+buyer+" "+buyerInn).toLowerCase().includes(q))
       && (!from || (d && d>=from)) && (!to || (d && d<=to))
-      && (!supSel || sup===supSel)
-      && (!buyerSel || buyer===buyerSel);
+      && (!supSel || nmEntityKey(x,"supplier")===supSel)
+      && (!buyerSel || nmEntityKey(x,"buyer")===buyerSel);
   });
 }
 function nmBuildFilterOptions(){
-  const sups=new Set(), buyers=new Set();
+  const sups=new Map(), buyers=new Map();
+
   nmRows.forEach(x=>{
-    const s=nmField(x,["Поставщик"]), b=nmField(x,["Покупатель"]);
-    if(s) sups.add(s);
-    if(b) buyers.add(b);
+    const sk=nmEntityKey(x,"supplier"), bk=nmEntityKey(x,"buyer");
+    const s=nmEntityName(x,"supplier"), b=nmEntityName(x,"buyer");
+    if(sk && !sups.has(sk)) sups.set(sk,s);
+    if(bk && !buyers.has(bk)) buyers.set(bk,b);
   });
+
   const supSel=document.getElementById("nmSupplierFilter");
   const buyerSel=document.getElementById("nmBuyerFilter");
   const curSup=supSel.value, curBuyer=buyerSel.value;
-  supSel.innerHTML=`<option value="">Все поставщики</option>`+Array.from(sups).sort((a,b)=>a.localeCompare(b,"ru")).map(s=>`<option value="${s}" ${s===curSup?"selected":""}>${s}</option>`).join("");
-  buyerSel.innerHTML=`<option value="">Все покупатели</option>`+Array.from(buyers).sort((a,b)=>a.localeCompare(b,"ru")).map(b=>`<option value="${b}" ${b===curBuyer?"selected":""}>${b}</option>`).join("");
+
+  supSel.innerHTML=`<option value="">Все поставщики</option>`+
+    Array.from(sups.entries())
+      .sort((a,b)=>a[1].localeCompare(b[1],"ru"))
+      .map(([key,label])=>`<option value="${key}" ${key===curSup?"selected":""}>${label}</option>`).join("");
+
+  buyerSel.innerHTML=`<option value="">Все покупатели</option>`+
+    Array.from(buyers.entries())
+      .sort((a,b)=>a[1].localeCompare(b[1],"ru"))
+      .map(([key,label])=>`<option value="${key}" ${key===curBuyer?"selected":""}>${label}</option>`).join("");
 }
 function nmCategoryLabel(enktuField){
   const s=String(enktuField||"").trim();
@@ -1233,15 +1266,18 @@ function renderNomenclature(){
   const prod={}, supplier={}, cats={};
   items.forEach(x=>{
     const name=nmField(x,["Номенклатура","Наименование товара/услуги"])||"Без названия";
-    const sup=nmField(x,["Поставщик"])||"Без поставщика";
+    const sup=nmEntityName(x,"supplier");
+    const supKey=nmEntityKey(x,"supplier");
     const invNo=nmField(x,["Счёт-фактура №","СФ №","СЧЁТ-ФАКТУРА"]);
-    invNo&&inv.add(invNo); names.add(name); sups.add(sup);
+    invNo&&inv.add(invNo); names.add(name); sups.add(supKey);
     qty+=nmNum(nmField(x,["Количество","Кол-во","количество"]));
     const a=nmNum(nmField(x,["Стоимость поставки","Стоимость без НДС","Сумма без НДС"]));
     const b=nmNum(nmField(x,["Сумма НДС","НДС"]));
     const c=nmNum(nmField(x,["Стоимость с НДС","Сумма с НДС"]));
     noVat+=a; vat+=b; total+=c;
-    prod[name]=(prod[name]||0)+c; supplier[sup]=(supplier[sup]||0)+c;
+    prod[name]=(prod[name]||0)+c;
+    if(!supplier[supKey]) supplier[supKey]={name:sup,sum:0};
+    supplier[supKey].sum+=c;
     const cat=nmCategoryLabel(nmField(x,["ЕНКТУ","Код ЕНКТУ"]));
     cats[cat]=(cats[cat]||0)+c;
   });
@@ -1253,7 +1289,8 @@ function renderNomenclature(){
   ].map(x=>`<div class="card"><div class="label">${x[0]}</div><div class="value">${typeof x[1]==='number'?fmt(x[1]):x[1]}</div></div>`).join("");
   const top=(obj)=>Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,20);
   document.getElementById("nmTopProducts").innerHTML=top(prod).map((x,i)=>`<div class="nm-list-row" data-rank="${i+1}"><span class="long-text" title="${x[0]}">${i+1}. ${x[0]}</span><b>${nmMoney(x[1])}</b></div>`).join("")||`<div style="color:var(--text2)">Нет данных</div>`;
-  document.getElementById("nmTopSuppliers").innerHTML=top(supplier).map((x,i)=>`<div class="nm-list-row" data-rank="${i+1}"><span class="long-text" title="${x[0]}">${i+1}. ${x[0]}</span><b>${nmMoney(x[1])}</b></div>`).join("")||`<div style="color:var(--text2)">Нет данных</div>`;
+  const supplierTop=Object.values(supplier).sort((a,b)=>b.sum-a.sum).slice(0,20);
+  document.getElementById("nmTopSuppliers").innerHTML=supplierTop.map((x,i)=>`<div class="nm-list-row" data-rank="${i+1}"><span class="long-text" title="${x.name}">${i+1}. ${x.name}</span><b>${nmMoney(x.sum)}</b></div>`).join("")||`<div style="color:var(--text2)">Нет данных</div>`;
   document.getElementById("nmCategoryList").innerHTML=top(cats).map((x,i)=>`<div class="nm-list-row" data-rank="${i+1}"><span class="long-text" title="${x[0]}">${i+1}. ${x[0]}</span><b>${nmMoney(x[1])}</b></div>`).join("")||`<div style="color:var(--text2)">Нет данных</div>`;
   let detailHtml="", lastInv="";
   items.forEach((x,idx)=>{
