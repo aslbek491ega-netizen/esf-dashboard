@@ -1180,26 +1180,8 @@ document.getElementById("printBtn").onclick = () => window.print();
 
 <script id="nm-only-js">
 let nmRows=[];
-function nmNormKey(s){
-  return String(s||"")
-    .toLowerCase()
-    .replace(/ё/g,"е")
-    .replace(/[^a-zа-я0-9]+/gi,"");
-}
 function nmField(item,names){
-  // First: exact header match.
-  for(const n of names){
-    const i=item.map[n];
-    if(i!==undefined) return String(item.row[i]||"").trim();
-  }
-  // Second: normalized header match (handles spaces, punctuation and case differences).
-  const wanted=names.map(nmNormKey);
-  for(const k of Object.keys(item.map||{})){
-    if(wanted.includes(nmNormKey(k))){
-      const i=item.map[k];
-      if(i!==undefined) return String(item.row[i]||"").trim();
-    }
-  }
+  for(const n of names){ const i=item.map[n]; if(i!==undefined) return (item.row[i]||"").trim(); }
   return "";
 }
 function nmNum(v){ return parseAmount(String(v||"").replace(/\s/g,"").replace(/,/g,".")); }
@@ -1212,44 +1194,6 @@ function nmDate(v){
   return "";
 }
 function nmMoney(n){ return (n||0).toLocaleString("ru-RU",{maximumFractionDigits:2})+" сум"; }
-function nmEntityINN(row, type){
-  const buyer = type === "buyer";
-  const exact = buyer
-    ? ["Покупатель ИНН","ИНН покупателя","Покупатель ИНН/ПИНФЛ","ИНН Покупателя","ИНН Покупатель","ИНН покупателя/ПИНФЛ"]
-    : ["Поставщик ИНН","ИНН поставщика","Поставщик ИНН/ПИНФЛ","ИНН Поставщика","ИНН Поставщик","ИНН поставщика/ПИНФЛ"];
-
-  let v = nmField(row, exact);
-  if(v) return String(v).replace(/\s+/g,"").trim();
-
-  // Robust fallback: inspect every header and find the column that contains
-  // both the entity word and INN. This handles variants such as
-  // "ИНН Покупателя", "Покупатель (ИНН)", extra spaces, etc.
-  const keys = Object.keys(row.map||{});
-  for(const k of keys){
-    const nk=nmNormKey(k);
-    const hasInn=nk.includes("инн");
-    const hasEntity=buyer
-      ? (nk.includes("покуп") || nk.includes("получател"))
-      : (nk.includes("постав") || nk.includes("продав"));
-    if(hasInn && hasEntity){
-      const i=row.map[k];
-      const val=String(row.row[i]||"").replace(/\s+/g,"").trim();
-      if(val) return val;
-    }
-  }
-  return "";
-}
-function nmEntityName(row, type){
-  return nmField(row, type === "buyer"
-    ? ["Покупатель","Покупатель наименование","Наименование покупателя"]
-    : ["Поставщик","Продавец","Поставщик наименование","Наименование поставщика"]) || "Неизвестно";
-}
-function nmEntityKey(row, type){
-  const inn = nmEntityINN(row, type);
-  if(inn) return "INN:"+inn;
-  return "NAME:"+nmNormKey(nmEntityName(row,type));
-}
-
 function nmFiltered(){
   const q=(document.getElementById("nmSearch").value||"").toLowerCase().trim();
   const from=document.getElementById("nmFrom").value, to=document.getElementById("nmTo").value;
@@ -1257,39 +1201,26 @@ function nmFiltered(){
   const buyerSel=document.getElementById("nmBuyerFilter").value;
   return nmRows.filter(x=>{
     const name=nmField(x,["Номенклатура","Наименование товара/услуги"]);
-    const sup=nmEntityName(x,"supplier"), buyer=nmEntityName(x,"buyer");
-    const supInn=nmEntityINN(x,"supplier"), buyerInn=nmEntityINN(x,"buyer");
-    const inv=nmField(x,["Счёт-фактура №","СФ №","СЧЁТ-ФАКТУРА"]);
+    const sup=nmField(x,["Поставщик"]), inv=nmField(x,["Счёт-фактура №","СФ №","СЧЁТ-ФАКТУРА"]), buyer=nmField(x,["Покупатель"]);
     const d=nmDate(nmField(x,["Дата счёт-фактуры","Дата СФ","дата СФ","Дата"]));
-    return (!q || (name+" "+sup+" "+supInn+" "+inv+" "+buyer+" "+buyerInn).toLowerCase().includes(q))
+    return (!q || (name+" "+sup+" "+inv+" "+buyer).toLowerCase().includes(q))
       && (!from || (d && d>=from)) && (!to || (d && d<=to))
-      && (!supSel || nmEntityKey(x,"supplier")===supSel)
-      && (!buyerSel || nmEntityKey(x,"buyer")===buyerSel);
+      && (!supSel || sup===supSel)
+      && (!buyerSel || buyer===buyerSel);
   });
 }
 function nmBuildFilterOptions(){
-  const sups=new Map(), buyers=new Map();
-
+  const sups=new Set(), buyers=new Set();
   nmRows.forEach(x=>{
-    const sk=nmEntityKey(x,"supplier"), bk=nmEntityKey(x,"buyer");
-    const s=nmEntityName(x,"supplier"), b=nmEntityName(x,"buyer");
-    if(sk && !sups.has(sk)) sups.set(sk,s);
-    if(bk && !buyers.has(bk)) buyers.set(bk,b);
+    const s=nmField(x,["Поставщик"]), b=nmField(x,["Покупатель"]);
+    if(s) sups.add(s);
+    if(b) buyers.add(b);
   });
-
   const supSel=document.getElementById("nmSupplierFilter");
   const buyerSel=document.getElementById("nmBuyerFilter");
   const curSup=supSel.value, curBuyer=buyerSel.value;
-
-  supSel.innerHTML=`<option value="">Все поставщики</option>`+
-    Array.from(sups.entries())
-      .sort((a,b)=>a[1].localeCompare(b[1],"ru"))
-      .map(([key,label])=>`<option value="${key}" ${key===curSup?"selected":""}>${label}</option>`).join("");
-
-  buyerSel.innerHTML=`<option value="">Все покупатели</option>`+
-    Array.from(buyers.entries())
-      .sort((a,b)=>a[1].localeCompare(b[1],"ru"))
-      .map(([key,label])=>`<option value="${key}" ${key===curBuyer?"selected":""}>${label}</option>`).join("");
+  supSel.innerHTML=`<option value="">Все поставщики</option>`+Array.from(sups).sort((a,b)=>a.localeCompare(b,"ru")).map(s=>`<option value="${s}" ${s===curSup?"selected":""}>${s}</option>`).join("");
+  buyerSel.innerHTML=`<option value="">Все покупатели</option>`+Array.from(buyers).sort((a,b)=>a.localeCompare(b,"ru")).map(b=>`<option value="${b}" ${b===curBuyer?"selected":""}>${b}</option>`).join("");
 }
 function nmCategoryLabel(enktuField){
   const s=String(enktuField||"").trim();
@@ -1302,18 +1233,15 @@ function renderNomenclature(){
   const prod={}, supplier={}, cats={};
   items.forEach(x=>{
     const name=nmField(x,["Номенклатура","Наименование товара/услуги"])||"Без названия";
-    const sup=nmEntityName(x,"supplier");
-    const supKey=nmEntityKey(x,"supplier");
+    const sup=nmField(x,["Поставщик"])||"Без поставщика";
     const invNo=nmField(x,["Счёт-фактура №","СФ №","СЧЁТ-ФАКТУРА"]);
-    invNo&&inv.add(invNo); names.add(name); sups.add(supKey);
+    invNo&&inv.add(invNo); names.add(name); sups.add(sup);
     qty+=nmNum(nmField(x,["Количество","Кол-во","количество"]));
     const a=nmNum(nmField(x,["Стоимость поставки","Стоимость без НДС","Сумма без НДС"]));
     const b=nmNum(nmField(x,["Сумма НДС","НДС"]));
     const c=nmNum(nmField(x,["Стоимость с НДС","Сумма с НДС"]));
     noVat+=a; vat+=b; total+=c;
-    prod[name]=(prod[name]||0)+c;
-    if(!supplier[supKey]) supplier[supKey]={name:sup,sum:0};
-    supplier[supKey].sum+=c;
+    prod[name]=(prod[name]||0)+c; supplier[sup]=(supplier[sup]||0)+c;
     const cat=nmCategoryLabel(nmField(x,["ЕНКТУ","Код ЕНКТУ"]));
     cats[cat]=(cats[cat]||0)+c;
   });
@@ -1325,8 +1253,7 @@ function renderNomenclature(){
   ].map(x=>`<div class="card"><div class="label">${x[0]}</div><div class="value">${typeof x[1]==='number'?fmt(x[1]):x[1]}</div></div>`).join("");
   const top=(obj)=>Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,20);
   document.getElementById("nmTopProducts").innerHTML=top(prod).map((x,i)=>`<div class="nm-list-row" data-rank="${i+1}"><span class="long-text" title="${x[0]}">${i+1}. ${x[0]}</span><b>${nmMoney(x[1])}</b></div>`).join("")||`<div style="color:var(--text2)">Нет данных</div>`;
-  const supplierTop=Object.values(supplier).sort((a,b)=>b.sum-a.sum).slice(0,20);
-  document.getElementById("nmTopSuppliers").innerHTML=supplierTop.map((x,i)=>`<div class="nm-list-row" data-rank="${i+1}"><span class="long-text" title="${x.name}">${i+1}. ${x.name}</span><b>${nmMoney(x.sum)}</b></div>`).join("")||`<div style="color:var(--text2)">Нет данных</div>`;
+  document.getElementById("nmTopSuppliers").innerHTML=top(supplier).map((x,i)=>`<div class="nm-list-row" data-rank="${i+1}"><span class="long-text" title="${x[0]}">${i+1}. ${x[0]}</span><b>${nmMoney(x[1])}</b></div>`).join("")||`<div style="color:var(--text2)">Нет данных</div>`;
   document.getElementById("nmCategoryList").innerHTML=top(cats).map((x,i)=>`<div class="nm-list-row" data-rank="${i+1}"><span class="long-text" title="${x[0]}">${i+1}. ${x[0]}</span><b>${nmMoney(x[1])}</b></div>`).join("")||`<div style="color:var(--text2)">Нет данных</div>`;
   let detailHtml="", lastInv="";
   items.forEach((x,idx)=>{
