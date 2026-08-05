@@ -98,8 +98,10 @@
 #znPage .zn-status{display:inline-block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
 #znPage .zn-payment-panel{margin:18px 0;}
-#znPage .zn-payment-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px;}
-#znPage .zn-payment-card{background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:14px;}
+#znPage .zn-payment-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-bottom:16px;}
+#znPage .zn-payment-card{background:linear-gradient(180deg,var(--panel2),rgba(255,255,255,.015));border:1px solid var(--border);border-radius:14px;padding:16px;min-width:0;box-shadow:0 6px 18px rgba(0,0,0,.10);}
+#znPage .zn-payment-card.paid{background:linear-gradient(180deg,rgba(79,124,255,.09),var(--panel2));}
+#znPage .zn-payment-card.free{background:linear-gradient(180deg,rgba(56,190,118,.08),var(--panel2));}
 #znPage .zn-payment-card .ptitle{font-size:12px;color:var(--text2);margin-bottom:7px;}
 #znPage .zn-payment-card .pvalue{font-size:22px;font-weight:800;margin-bottom:4px;}
 #znPage .zn-payment-card .pmeta{font-size:12px;color:var(--text2);line-height:1.5;}
@@ -107,14 +109,23 @@
 #znPage .zn-payment-card.free{border-color:rgba(56,190,118,.45);}
 #znPage .zn-payment-bar{height:9px;background:var(--panel2);border-radius:5px;overflow:hidden;margin-top:10px;border:1px solid var(--border);}
 #znPage .zn-payment-fill{height:100%;border-radius:5px;background:var(--amber);}
-#znPage .zn-payment-table{width:100%;border-collapse:collapse;font-size:12px;}
-#znPage .zn-payment-table th,#znPage .zn-payment-table td{padding:9px 10px;border-bottom:1px solid var(--border);text-align:left;}
-#znPage .zn-payment-table th{color:var(--text2);font-weight:600;}
+#znPage .zn-payment-table{width:100%;border-collapse:separate;border-spacing:0;font-size:12px;table-layout:fixed;}
+#znPage .zn-payment-table th,#znPage .zn-payment-table td{padding:10px 12px;border-bottom:1px solid var(--border);text-align:left;vertical-align:middle;}
+#znPage .zn-payment-table th{color:var(--text2);font-weight:600;background:rgba(255,255,255,.025);position:sticky;top:0;z-index:2;}
+#znPage .zn-payment-table th:nth-child(1){width:50%;}
+#znPage .zn-payment-table th:nth-child(2){width:14%;}
+#znPage .zn-payment-table th:nth-child(3){width:10%;text-align:right;}
+#znPage .zn-payment-table th:nth-child(4){width:17%;text-align:right;}
+#znPage .zn-payment-table th:nth-child(5){width:9%;text-align:right;}
+#znPage .zn-payment-table td:first-child{white-space:normal;overflow-wrap:anywhere;line-height:1.35;}
 #znPage .zn-payment-table td.num{text-align:right;white-space:nowrap;}
+#znPage .zn-payment-table tbody tr:hover{background:rgba(79,124,255,.055);}
+#znPage .zn-payment-table-wrap{overflow:hidden;border:1px solid var(--border);border-radius:12px;background:rgba(0,0,0,.04);}
+#znPage .zn-payment-table-scroll{max-height:390px;overflow:auto;}
 #znPage .zn-payment-badge{display:inline-block;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:700;}
 #znPage .zn-payment-badge.paid{background:rgba(79,124,255,.14);color:#8fb0ff;}
 #znPage .zn-payment-badge.free{background:rgba(56,190,118,.14);color:#7be0a7;}
-@media(max-width:800px){#znPage .zn-payment-summary{grid-template-columns:1fr;}}
+@media(max-width:800px){#znPage .zn-payment-summary{grid-template-columns:1fr;} #znPage .zn-payment-table{table-layout:auto;} #znPage .zn-payment-table th:nth-child(1){width:auto;} }
 
 .zn-modal{position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px;}
 .zn-modal.hidden{display:none !important;}
@@ -380,7 +391,7 @@
     <div class="panel zn-payment-panel">
       <div class="zn-section-head">
         <h3 style="margin:0;">💳 Платный / Бесплатный</h3>
-        <span class="zn-muted">По регламенту из PDF и текущим данным ЗН</span>
+        <span class="zn-muted">Разделение ЗН по регламенту</span>
       </div>
       <div id="znPaymentSummary"></div>
     </div>
@@ -1425,11 +1436,15 @@ function znPaymentClass(repair){
   // и 04,06,08,09,10,11,20 (товарный а/м).
   // В ветке "Бесплатные": 07,13,14 (клиентский а/м)
   // и 12,17,18,19 + "Комплектация автомобиля доп.оборудованием" (товарный а/м).
-  const paid=["01","02","03","04","05","06","08","09","10","11","15","16","20"];
-  const free=["07","12","13","14","17","18","19"];
+  const paid=["01","02","03","04","05","06","08","09","10","11","15","16","20","22","26"];
+  const free=["07","12","13","14","17","18","19","21"];
   const code=znRepairCode(repair);
   if(code && paid.includes(code)) return "Платный";
   if(code && free.includes(code)) return "Бесплатный";
+  // В реестре встречаются расширенные названия тех же видов ремонта.
+  // 21 — гарантийный ремонт → бесплатный; 22/26 — ДО "в договор" → платный.
+  if(text.includes("гарантийн")) return "Бесплатный";
+  if(text.includes("дополнительное оборудование") && text.includes("договор")) return "Платный";
   if(text.includes("комплектация автомобиля") && text.includes("доп")) return "Бесплатный";
   return "";
 }
@@ -1598,7 +1613,7 @@ function znPaymentSummaryHtml(rows){
     byRepair[name].sum+=znTotal(r);
   });
   const arr=Object.entries(byRepair).sort((a,b)=>b[1].sum-a[1].sum);
-  const table=arr.length?`<div style="overflow:auto;max-height:360px;">
+  const table=arr.length?`<div class="zn-payment-table-wrap"><div class="zn-payment-table-scroll">
     <table class="zn-payment-table">
       <thead><tr><th>Вид ремонта</th><th>Оплата</th><th>ЗН</th><th>Сумма</th><th>% суммы</th></tr></thead>
       <tbody>${arr.map(([name,v])=>`<tr>
