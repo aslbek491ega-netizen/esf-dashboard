@@ -358,6 +358,10 @@
   #znPage .zn-filter{grid-template-columns:1fr 1fr;}
   #znPage .zn-filter > div:first-child,#znPage .zn-filter #znResultInfo{grid-column:1 / -1;}
 }
+
+/* ZN table pagination: never render all 35k rows into DOM */
+.zn-table-pager{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 12px;color:var(--text2);font-size:12px;border-top:1px solid rgba(139,147,168,.12)}
+.zn-pager-buttons{display:flex;align-items:center;gap:8px}.zn-pager-buttons button{min-width:34px;height:30px;border:1px solid rgba(139,147,168,.22);border-radius:8px;background:var(--panel2,#172033);color:var(--text,#eef1f8);cursor:pointer}.zn-pager-buttons button:disabled{opacity:.35;cursor:not-allowed}.zn-pager-buttons strong{font-weight:600;color:var(--text,#eef1f8)}
 </style>
 </head>
 <body>
@@ -555,7 +559,6 @@
       <div><label>С даты</label><input type="date" id="znFrom"></div>
       <div><label>По дату</label><input type="date" id="znTo"></div>
       <div><label>Организация</label><select id="znOrg"><option value="">Все организации</option></select></div>
-      <div><label>Контрагент</label><select id="znCounterparty"><option value="">Все контрагенты</option></select></div>
       <div><label>Состояние</label><select id="znState"><option value="">Все состояния</option></select></div>
       <div><label>Вид ремонта</label><select id="znRepair"><option value="">Все виды ремонта</option></select></div>
       <div><label>Оплата</label><select id="znPaymentType"><option value="">Все</option><option value="Платный">Платный</option><option value="Бесплатный">Бесплатный</option></select></div>
@@ -1563,6 +1566,8 @@ document.getElementById("printBtn").onclick = () => window.print();
 
 <script id="zn-page-js">
 let znRows=[];
+let znTablePage=1;
+const ZN_TABLE_PAGE_SIZE=20;
 let znHeaders=[];
 let znStateChart=null, znMonthlyChart=null, znPartsWorksChart=null, znShopChart=null;
 
@@ -1642,7 +1647,6 @@ function znFiltered(){
   const q=(document.getElementById("znSearch").value||"").toLowerCase().trim();
   const from=document.getElementById("znFrom").value,to=document.getElementById("znTo").value;
   const org=document.getElementById("znOrg").value;
-  const counterparty=document.getElementById("znCounterparty").value;
   const state=document.getElementById("znState").value;
   const repair=document.getElementById("znRepair").value;
   const paymentType=document.getElementById("znPaymentType").value;
@@ -1661,7 +1665,6 @@ function znFiltered(){
       &&(!from||(date&&date>=from))
       &&(!to||(date&&date<=to))
       &&(!org||znField(r,"Организация")===org)
-      &&(!counterparty||znField(r,"Контрагент")===counterparty)
       &&(!state||znField(r,"Состояние заказ-наряда")===state)
       &&(!repair||znField(r,"Вид ремонта")===repair)
       &&(!paymentType||znPaymentClass(znField(r,"Вид ремонта"))===paymentType)
@@ -1898,8 +1901,13 @@ function znRenderTable(rows){
     return;
   }
 
-  body.innerHTML=rows.map((r,ri)=>
-    `<tr class="zn-clickable" data-zn-row="${ri}">
+  const totalPages=Math.max(1,Math.ceil(rows.length/ZN_TABLE_PAGE_SIZE));
+  znTablePage=Math.min(Math.max(1,znTablePage),totalPages);
+  const from=(znTablePage-1)*ZN_TABLE_PAGE_SIZE;
+  const pageRows=rows.slice(from,from+ZN_TABLE_PAGE_SIZE);
+
+  body.innerHTML=pageRows.map((r,ri)=>
+    `<tr class="zn-clickable" data-zn-row="${from+ri}">
       ${visibleHeaders.map(h=>{
         const v=znField(r,h);
         if(["Сумма деталей","Сумма работ"].includes(h))
@@ -1908,7 +1916,7 @@ function znRenderTable(rows){
           return `<td><span class="zn-status">${znEscape(v)}</span></td>`;
         return `<td title="${znEscape(v)}">${znEscape(v)}</td>`;
       }).join("")}
-      <td>${znEscape(znPaymentClass(znField(r,"Вид ремонта"))||"—")}</td>
+      <td><span class="zn-payment-badge ${znPaymentClass(znField(r,"Вид ремонта"))==='Бесплатный'?'free':'paid'}">${znEscape(znPaymentClass(znField(r,"Вид ремонта")))}</span></td>
     </tr>`
   ).join("");
 
@@ -1918,7 +1926,28 @@ function znRenderTable(rows){
       znOpenModal(rows[i]);
     };
   });
+
+  const table=document.getElementById("znTableWrap") || body.closest(".zn-table-wrap") || body.parentElement?.parentElement;
+  let pager=document.getElementById("znTablePager");
+  if(!pager){
+    pager=document.createElement("div");
+    pager.id="znTablePager";
+    pager.className="zn-table-pager";
+    (table?.parentElement || body.parentElement || document.getElementById("znPage")).appendChild(pager);
+  }
+  const fmt=n=>Number(n).toLocaleString("ru-RU");
+  pager.innerHTML=`<span>Показано ${fmt(from+1)}–${fmt(Math.min(from+ZN_TABLE_PAGE_SIZE,rows.length))} из ${fmt(rows.length)}</span>
+    <div class="zn-pager-buttons">
+      <button type="button" ${znTablePage<=1?'disabled':''} data-p="${znTablePage-1}">‹</button>
+      <strong>${fmt(znTablePage)} / ${fmt(totalPages)}</strong>
+      <button type="button" ${znTablePage>=totalPages?'disabled':''} data-p="${znTablePage+1}">›</button>
+    </div>`;
+  pager.querySelectorAll("button:not([disabled])").forEach(btn=>btn.onclick=()=>{
+    znTablePage=Number(btn.dataset.p);
+    znRenderTable(rows);
+  });
 }
+
 function znOpenModal(row){
   const num=znField(row,"Номер")||"Без номера";
   document.getElementById("znModalTitle").textContent=`Заказ-наряд № ${num}`;
@@ -1960,51 +1989,83 @@ function renderZN(){
 }
 
 async function fetchZN(){
-  document.getElementById("znErr").textContent="Загрузка…";
+  const errBox=document.getElementById("znErr");
+  const label=document.getElementById("znDateLabel");
+  if(errBox)errBox.textContent="Загрузка данных из Google Sheets…";
+  if(label)label.textContent="Источник: Google Sheets → ЗНАРЯД · загрузка данных…";
 
-  const url=`https://docs.google.com/spreadsheets/d/${ZN_SPREADSHEET_ID}/gviz/tq?tqx=out:json&gid=${ZN_GID}`;
-  const res=await fetch(url,{cache:"no-store"});
-  if(!res.ok)throw new Error(`Google Sheets: ${res.status}`);
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),45000);
 
-  const text=await res.text();
-  const start=text.indexOf("{"),end=text.lastIndexOf("}");
-  if(start<0||end<0)
-    throw new Error("Google Sheets не вернул данные. Проверьте общий доступ к таблице.");
+  try{
+    let values=null;
 
-  const data=JSON.parse(text.slice(start,end+1));
-  const cols=(data.table?.cols||[]).map(c=>String(c.label||c.id||""));
-  const rows=(data.table?.rows||[]).map(row=>(row.c||[]).map(c=>c?.f??c?.v??""));
+    // Основной путь: Google Sheets API. Токен уже получен при входе в dashboard.
+    if(accessToken){
+      const range=encodeURIComponent("'ЗНАРЯД'!A:O");
+      const apiUrl=`https://sheets.googleapis.com/v4/spreadsheets/${ZN_SPREADSHEET_ID}/values/${range}?valueRenderOption=FORMATTED_VALUE&majorDimension=ROWS`;
+      const apiRes=await fetch(apiUrl,{
+        cache:"no-store",
+        signal:controller.signal,
+        headers:{Authorization:`Bearer ${accessToken}`}
+      });
+      if(apiRes.ok){
+        const data=await apiRes.json();
+        values=Array.isArray(data.values)?data.values:[];
+      }else if(apiRes.status!==401 && apiRes.status!==403){
+        throw new Error(`Google Sheets API: ${apiRes.status}`);
+      }
+    }
 
-  znHeaders=cols.filter(x=>x!=="");
-  if(znHeaders.length!==ZN_HEADERS_EXPECTED.length ||
-     !ZN_HEADERS_EXPECTED.every(h=>znHeaders.includes(h))){
-    console.warn("Структура Google Sheets отличается от ожидаемой.",znHeaders);
+    // Запасной путь для публичного листа.
+    if(!values){
+      const url=`https://docs.google.com/spreadsheets/d/${ZN_SPREADSHEET_ID}/gviz/tq?tqx=out:json&gid=${ZN_GID}`;
+      const res=await fetch(url,{cache:"no-store",signal:controller.signal});
+      if(!res.ok)throw new Error(`Google Sheets: ${res.status}`);
+      const text=await res.text();
+      const start=text.indexOf("{"),end=text.lastIndexOf("}");
+      if(start<0||end<0)throw new Error("Google Sheets не вернул данные. Проверьте доступ к таблице.");
+      const data=JSON.parse(text.slice(start,end+1));
+      const cols=(data.table?.cols||[]).map(c=>String(c.label||c.id||""));
+      const rows=(data.table?.rows||[]).map(row=>(row.c||[]).map(c=>c?.f??c?.v??""));
+      values=[cols,...rows];
+    }
+
+    if(!values.length)throw new Error("Лист «ЗНАРЯД» пустой или недоступен.");
+
+    znHeaders=(values[0]||[]).map(v=>String(v??"").trim());
+    if(znHeaders.length!==ZN_HEADERS_EXPECTED.length || !ZN_HEADERS_EXPECTED.every(h=>znHeaders.includes(h))){
+      console.warn("Структура Google Sheets отличается от ожидаемой.",znHeaders);
+    }
+
+    znRows=values.slice(1)
+      .filter(r=>r.some(v=>String(v??"").trim()!==""))
+      .map(r=>{
+        const a=r.slice();
+        while(a.length<znHeaders.length)a.push("");
+        return a.slice(0,znHeaders.length);
+      });
+
+    znTablePage=1;
+    if(label)label.textContent=`Источник: Google Sheets → ЗНАРЯД · обновлено: ${new Date().toLocaleString("ru-RU")} · строк: ${znCount(znRows.length)}`;
+    if(errBox)errBox.textContent="";
+
+    [
+      ["znOrg","Организация","Все организации"],
+      ["znState","Состояние заказ-наряда","Все состояния"],
+      ["znRepair","Вид ремонта","Все виды ремонта"],
+      ["znDivision","Подразделение","Все подразделения"],
+      ["znShop","Цех","Все цеха"],
+      ["znPriceType","Тип цен","Все типы цен"]
+    ].forEach(x=>znBuildOptions(x[0],x[1],x[2]));
+
+    renderZN();
+  }catch(e){
+    if(e?.name==="AbortError") throw new Error("Google Sheets не ответил за 45 секунд. Проверьте доступ к листу «ЗНАРЯД».");
+    throw e;
+  }finally{
+    clearTimeout(timer);
   }
-
-  // Выравниваем строки по фактическим заголовкам.
-  znRows=rows
-    .filter(r=>r.some(v=>String(v??"").trim()!==""))
-    .map(r=>{
-      const a=r.slice();
-      while(a.length<znHeaders.length)a.push("");
-      return a.slice(0,znHeaders.length);
-    });
-
-  document.getElementById("znDateLabel").textContent=
-    `Источник: Google Sheets → ЗНАРЯД · обновлено: ${new Date().toLocaleString("ru-RU")} · строк: ${znCount(znRows.length)}`;
-  document.getElementById("znErr").textContent="";
-
-  [
-    ["znOrg","Организация","Все организации"],
-    ["znCounterparty","Контрагент","Все контрагенты"],
-    ["znState","Состояние заказ-наряда","Все состояния"],
-    ["znRepair","Вид ремонта","Все виды ремонта"],
-    ["znDivision","Подразделение","Все подразделения"],
-    ["znShop","Цех","Все цеха"],
-    ["znPriceType","Тип цен","Все типы цен"]
-  ].forEach(x=>znBuildOptions(x[0],x[1],x[2]));
-
-  renderZN();
 }
 
 function openZNPage(){
@@ -2025,19 +2086,20 @@ document.addEventListener("DOMContentLoaded",()=>{
   };
 
   ["znSearch","znFrom","znTo"].forEach(id=>{
-    document.getElementById(id).oninput=renderZN;
+    document.getElementById(id).oninput=()=>{znTablePage=1;renderZN();};
   });
-  ["znOrg","znCounterparty","znState","znRepair","znPaymentType","znDivision","znShop","znPriceType"].forEach(id=>{
-    document.getElementById(id).onchange=renderZN;
+  ["znOrg","znState","znRepair","znPaymentType","znDivision","znShop","znPriceType"].forEach(id=>{
+    document.getElementById(id).onchange=()=>{znTablePage=1;renderZN();};
   });
 
   document.getElementById("znClear").onclick=()=>{
     document.getElementById("znSearch").value="";
     document.getElementById("znFrom").value="";
     document.getElementById("znTo").value="";
-    ["znOrg","znCounterparty","znState","znRepair","znPaymentType","znDivision","znShop","znPriceType"].forEach(id=>{
+    ["znOrg","znState","znRepair","znPaymentType","znDivision","znShop","znPriceType"].forEach(id=>{
       document.getElementById(id).value="";
     });
+    znTablePage=1;
     renderZN();
   };
 
