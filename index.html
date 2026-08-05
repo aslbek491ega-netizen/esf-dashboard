@@ -92,7 +92,47 @@
 #znPage .zn-kpi-grid{grid-template-columns:repeat(7,1fr);}
 #znPage .zn-chart-box{height:280px;position:relative;}
 #znPage .zn-doughnut-box{height:260px;max-width:520px;margin:0 auto;}
-#znPage .zn-ranking{display:flex;flex-direction:column;gap:8px;max-height:320px;overflow:auto;}
+#znPage .grid2 > .panel:has(.zn-ranking){
+  min-width:0;
+  height:380px;
+  box-sizing:border-box;
+}
+#znPage .zn-ranking{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  height:300px;
+  max-height:300px;
+  overflow-y:auto;
+  overflow-x:hidden;
+  padding-right:4px;
+  box-sizing:border-box;
+}
+#znPage .zn-rank-row{
+  flex:0 0 40px;
+  height:40px;
+  min-height:40px;
+  box-sizing:border-box;
+  display:grid;
+  grid-template-columns:28px minmax(0,1fr) max-content;
+  gap:10px;
+  align-items:center;
+  padding:6px 10px;
+  border:1px solid var(--border);
+  border-radius:9px;
+  background:var(--panel2);
+}
+#znPage .zn-rank-name{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+#znPage .zn-rank-value{
+  font-weight:700;
+  white-space:nowrap;
+  text-align:right;
+}
 #znPage .zn-rank-row{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--border);border-radius:9px;background:var(--panel2);}
 #znPage .zn-rank-num{color:var(--text2);font-weight:700;}
 #znPage .zn-rank-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
