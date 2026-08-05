@@ -242,6 +242,52 @@
 @media(max-width:900px){#znPage .zn-wrap{padding:16px}.zn-table-wrap{max-height:calc(100vh - 430px)!important}}
 </style>
 
+
+<style id="zn-layout-compact-v4">
+/* ЗН: сначала основные показатели, затем фильтры, затем распределение */
+#znPage .zn-filter{
+  margin:0 0 14px; padding:12px 14px;
+  display:grid; grid-template-columns:minmax(220px,1.7fr) repeat(3,minmax(120px,1fr)) repeat(3,minmax(130px,1fr)) auto;
+  gap:9px 10px; align-items:end;
+  background:var(--panel); border:1px solid var(--border); border-radius:12px;
+}
+#znPage .zn-filter > div{min-width:0;}
+#znPage .zn-filter label{font-size:11px;margin-bottom:4px;}
+#znPage .zn-filter input,#znPage .zn-filter select{width:100%;min-width:0;height:34px;padding:7px 9px;font-size:12px;}
+#znPage .zn-filter .btn{height:34px;white-space:nowrap;padding:7px 12px;}
+#znPage .zn-filter #znResultInfo{grid-column:1 / -1;line-height:1.2;}
+#znPage .zn-payment-panel{margin:0 0 16px;}
+
+/* Реестр: компактный вид ремонта без переноса длинных названий */
+#znPage .zn-table-wrap table{table-layout:fixed;min-width:1180px;}
+#znPage .zn-table-wrap th,#znPage .zn-table-wrap td{padding:6px 8px;line-height:1.15;}
+#znPage .zn-table-wrap th:first-child,#znPage .zn-table-wrap td:first-child{
+  width:235px; max-width:235px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+#znPage .zn-table-wrap td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#znPage .zn-table-wrap .zn-status{max-width:130px;}
+#znPage .zn-table-wrap .zn-num{text-align:right;}
+#znPage .zn-table-wrap tbody tr{height:31px;}
+#znPage .zn-table-wrap tbody tr:hover{background:rgba(79,124,255,.055);}
+
+/* Вид ремонта в выпадающем списке тоже компактный */
+#znPage #znRepair{max-width:230px;}
+#znPage #znRepair option{max-width:230px;}
+
+/* TOP видов ремонта — компактнее, чтобы не занимал большой экран */
+#znPage #znTopRepairs{max-height:190px;gap:5px;}
+#znPage #znTopRepairs .zn-rank-row{padding:6px 8px;min-height:30px;}
+
+@media(max-width:1250px){
+  #znPage .zn-filter{grid-template-columns:repeat(4,minmax(130px,1fr));}
+  #znPage .zn-filter > div:first-child{grid-column:span 2;}
+}
+@media(max-width:800px){
+  #znPage .zn-filter{grid-template-columns:1fr 1fr;}
+  #znPage .zn-filter > div:first-child,#znPage .zn-filter #znResultInfo{grid-column:1 / -1;}
+}
+</style>
 </head>
 <body>
 
@@ -433,14 +479,6 @@
 
     <div class="cards zn-kpi-grid" id="znCards"></div>
 
-    <div class="panel zn-payment-panel">
-      <div class="zn-payment-head">
-        <h3>Распределение по оплате</h3>
-        <span>Платные / Бесплатные</span>
-      </div>
-      <div id="znPaymentSummary"></div>
-    </div>
-
     <div class="panel zn-filter">
       <div><label>Поиск</label><input class="wide" id="znSearch" placeholder="Номер / контрагент / VIN / гос. номер / вид ремонта"></div>
       <div><label>С даты</label><input type="date" id="znFrom"></div>
@@ -455,6 +493,16 @@
       <button class="btn secondary" id="znClear">Сбросить</button>
       <span id="znResultInfo" style="font-size:12px;color:var(--text2);"></span>
     </div>
+
+
+    <div class="panel zn-payment-panel">
+      <div class="zn-payment-head">
+        <h3>Распределение по оплате</h3>
+        <span>Платные / Бесплатные</span>
+      </div>
+      <div id="znPaymentSummary"></div>
+    </div>
+
 
     <div class="grid2">
       <div class="panel">
