@@ -173,6 +173,12 @@
 #znPage .zn-payment-table-scroll{max-height:330px;}
 #znPage .zn-payment-table th:nth-child(n+3),#znPage .zn-payment-table td:nth-child(n+3){text-align:right;}
 #znPage .zn-payment-table td:nth-child(2){white-space:nowrap;}
+#znPage .zn-payment-table-wrap{position:relative;}
+#znPage .zn-payment-table tbody tr:nth-child(n+8){display:none;}
+#znPage .zn-payment-table-wrap.expanded .zn-payment-table tbody tr:nth-child(n+8){display:table-row;}
+#znPage .zn-payment-more{display:flex;justify-content:center;margin-top:10px;}
+#znPage .zn-payment-more button{padding:7px 18px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,.035);color:var(--text);font-size:12px;cursor:pointer;}
+#znPage .zn-payment-more button:hover{background:rgba(255,255,255,.07);}
 @media(max-width:800px){#znPage .zn-payment-summary{grid-template-columns:1fr;}#znPage .zn-payment-table-scroll{overflow-x:auto;}#znPage .zn-payment-table{min-width:760px;}}
 
 .zn-modal{position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px;}
@@ -1716,7 +1722,7 @@ function znPaymentSummaryHtml(rows){
     byRepair[name].sum+=znTotal(r);
   });
   const arr=Object.entries(byRepair).sort((a,b)=>b[1].sum-a[1].sum);
-  const table=arr.length?`<table class="zn-payment-table">
+  const table=arr.length?`<div class="zn-payment-table-wrap" id="znPaymentTableWrap"><table class="zn-payment-table">
       <thead><tr><th>Вид ремонта</th><th>Оплата</th><th>ЗН</th><th>Сумма</th><th>% суммы</th></tr></thead>
       <tbody>${arr.map(([name,v])=>`<tr>
         <td title="${znEscape(name)}">${znEscape(name)}</td>
@@ -1725,7 +1731,7 @@ function znPaymentSummaryHtml(rows){
         <td class="num">${znMoney(v.sum)}</td>
         <td class="num">${pct(v.sum,totalSum)}%</td>
       </tr>`).join("")}</tbody>
-    </table>`:`<div class="zn-muted">Нет данных</div>`;
+    </table>${arr.length>7?`<div class="zn-payment-more"><button type="button" id="znPaymentMoreBtn">Показать ещё (${arr.length-7})</button></div>`:""}</div>`:`<div class="zn-muted">Нет данных</div>`;
 
   return `<div class="zn-payment-visual">
     <div class="zn-payment-chart-card">
@@ -1766,7 +1772,17 @@ function znPaymentSummaryHtml(rows){
 }
 function renderZNPaymentSummary(rows){
   const el=document.getElementById("znPaymentSummary");
-  if(el)el.innerHTML=znPaymentSummaryHtml(rows);
+  if(el){
+    el.innerHTML=znPaymentSummaryHtml(rows);
+    const more=document.getElementById("znPaymentMoreBtn");
+    const wrap=document.getElementById("znPaymentTableWrap");
+    if(more && wrap){
+      more.onclick=()=>{
+        const expanded=wrap.classList.toggle("expanded");
+        more.textContent=expanded?"Свернуть":"Показать ещё ("+(wrap.querySelectorAll("tbody tr").length-7)+")";
+      };
+    }
+  }
 }
 
 function renderZNCards(rows){
