@@ -105,7 +105,6 @@
 #znPage .zn-payment-card .pmeta{font-size:12px;color:var(--text2);line-height:1.5;}
 #znPage .zn-payment-card.paid{border-color:rgba(79,124,255,.45);}
 #znPage .zn-payment-card.free{border-color:rgba(56,190,118,.45);}
-#znPage .zn-payment-card.unknown{border-color:rgba(242,177,52,.45);}
 #znPage .zn-payment-bar{height:9px;background:var(--panel2);border-radius:5px;overflow:hidden;margin-top:10px;border:1px solid var(--border);}
 #znPage .zn-payment-fill{height:100%;border-radius:5px;background:var(--amber);}
 #znPage .zn-payment-table{width:100%;border-collapse:collapse;font-size:12px;}
@@ -115,7 +114,6 @@
 #znPage .zn-payment-badge{display:inline-block;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:700;}
 #znPage .zn-payment-badge.paid{background:rgba(79,124,255,.14);color:#8fb0ff;}
 #znPage .zn-payment-badge.free{background:rgba(56,190,118,.14);color:#7be0a7;}
-#znPage .zn-payment-badge.unknown{background:rgba(242,177,52,.14);color:#f2b134;}
 @media(max-width:800px){#znPage .zn-payment-summary{grid-template-columns:1fr;}}
 
 .zn-modal{position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px;}
@@ -1421,14 +1419,18 @@ function znRepairCode(repair){
   return m?m[1].padStart(2,"0"):"";
 }
 function znPaymentClass(repair){
+  const text=String(repair||"").trim().toLowerCase();
+  // Классификация строго по дереву из PDF, без третьей категории.
+  // В ветке "Платные": 01,02,03,05,15,16 (клиентский а/м)
+  // и 04,06,08,09,10,11,20 (товарный а/м).
+  // В ветке "Бесплатные": 07,13,14 (клиентский а/м)
+  // и 12,17,18,19 + "Комплектация автомобиля доп.оборудованием" (товарный а/м).
+  const paid=["01","02","03","04","05","06","08","09","10","11","15","16","20"];
+  const free=["07","12","13","14","17","18","19"];
   const code=znRepairCode(repair);
-  if(!code)return "";
-  // В PDF явно выделены разделы "Платные" и "Бесплатные".
-  // 04 и 10 также прямо описаны как коммерческие/платные.
-  const paid=["01","02","03","04","05","10","15","16"];
-  const free=["07","08","13","14"];
-  if(paid.includes(code))return "Платный";
-  if(free.includes(code))return "Бесплатный";
+  if(code && paid.includes(code)) return "Платный";
+  if(code && free.includes(code)) return "Бесплатный";
+  if(text.includes("комплектация автомобиля") && text.includes("доп")) return "Бесплатный";
   return "";
 }
 function znFiltered(){
@@ -1565,13 +1567,14 @@ function znRankHtml(rows,group){
 function znPaymentSummaryHtml(rows){
   const groups={
     "Платный":{count:0,sum:0},
-    "Бесплатный":{count:0,sum:0},
-    "Не определено":{count:0,sum:0}
+    "Бесплатный":{count:0,sum:0}
   };
   rows.forEach(r=>{
-    const cls=znPaymentClass(znField(r,"Вид ремонта"))||"Не определено";
-    groups[cls].count++;
-    groups[cls].sum+=znTotal(r);
+    const cls=znPaymentClass(znField(r,"Вид ремонта"));
+    if(cls){
+      groups[cls].count++;
+      groups[cls].sum+=znTotal(r);
+    }
   });
   const totalCount=rows.length, totalSum=rows.reduce((s,r)=>s+znTotal(r),0);
   const pct=(n,d)=>d?((n/d)*100).toFixed(1):"0.0";
@@ -1589,7 +1592,7 @@ function znPaymentSummaryHtml(rows){
   const byRepair={};
   rows.forEach(r=>{
     const name=znField(r,"Вид ремонта")||"Не указан";
-    const cls=znPaymentClass(name)||"Не определено";
+    const cls=znPaymentClass(name);
     if(!byRepair[name])byRepair[name]={cls,count:0,sum:0};
     byRepair[name].count++;
     byRepair[name].sum+=znTotal(r);
@@ -1600,14 +1603,14 @@ function znPaymentSummaryHtml(rows){
       <thead><tr><th>Вид ремонта</th><th>Оплата</th><th>ЗН</th><th>Сумма</th><th>% суммы</th></tr></thead>
       <tbody>${arr.map(([name,v])=>`<tr>
         <td title="${znEscape(name)}">${znEscape(name)}</td>
-        <td><span class="zn-payment-badge ${v.cls==='Платный'?'paid':v.cls==='Бесплатный'?'free':'unknown'}">${v.cls}</span></td>
+        <td><span class="zn-payment-badge ${v.cls==='Платный'?'paid':'free'}">${v.cls}</span></td>
         <td class="num">${znCount(v.count)}</td>
         <td class="num">${znMoney(v.sum)}</td>
         <td class="num">${pct(v.sum,totalSum)}%</td>
       </tr>`).join("")}</tbody>
     </table></div>`:`<div class="zn-muted">Нет данных</div>`;
 
-  return `<div class="zn-payment-summary">${card("Платный","paid")}${card("Бесплатный","free")}${card("Не определено","unknown")}</div>${table}`;
+  return `<div class="zn-payment-summary">${card("Платный","paid")}${card("Бесплатный","free")}</div>${table}`;
 }
 function renderZNPaymentSummary(rows){
   const el=document.getElementById("znPaymentSummary");
