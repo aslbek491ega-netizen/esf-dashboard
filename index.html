@@ -1306,7 +1306,7 @@ function znBuildOptions(id,name){
   const sel=document.getElementById(id); if(!sel)return;
   const cur=sel.value, vals=new Set();
   znRows.forEach(r=>{const v=znField(r,name); if(v) vals.add(v);});
-  sel.innerHTML=`<option value="">Все ${name===\"Организация\"?\"организации\":name===\"Состояние заказ-наряда\"?\"состояния\":name.toLowerCase()+\"а\"}</option>`+
+  sel.innerHTML=`<option value="">Все ${name==="Организация"?"организации":name==="Состояние заказ-наряда"?"состояния":name.toLowerCase()+"а"}</option>`+
     Array.from(vals).sort((a,b)=>a.localeCompare(b,"ru")).map(v=>`<option value="${znEscape(v)}">${znEscape(v)}</option>`).join("");
   sel.value=cur;
 }
