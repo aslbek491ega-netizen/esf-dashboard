@@ -162,12 +162,15 @@
 #znPage .zn-payment-table-wrap{width:100%;overflow:hidden;}
 #znPage .zn-payment-table-scroll{width:100%;overflow-x:hidden;overflow-y:auto;max-height:390px;}
 #znPage .zn-payment-table{width:100%;table-layout:fixed;}
-#znPage .zn-payment-table th:nth-child(1){width:48%;}
-#znPage .zn-payment-table th:nth-child(2){width:15%;}
+#znPage .zn-payment-table th:nth-child(1){width:38%;}
+#znPage .zn-payment-table th:nth-child(2){width:14%;}
 #znPage .zn-payment-table th:nth-child(3){width:10%;}
-#znPage .zn-payment-table th:nth-child(4){width:17%;}
-#znPage .zn-payment-table th:nth-child(5){width:10%;}
-#znPage .zn-payment-table td:first-child{white-space:normal;overflow-wrap:anywhere;word-break:break-word;line-height:1.35;}
+#znPage .zn-payment-table th:nth-child(4){width:24%;}
+#znPage .zn-payment-table th:nth-child(5){width:14%;}
+#znPage .zn-payment-table td:first-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.15;}
+#znPage .zn-payment-table th,#znPage .zn-payment-table td{padding:7px 9px;}
+#znPage .zn-payment-table tbody tr{height:32px;}
+#znPage .zn-payment-table-scroll{max-height:330px;}
 #znPage .zn-payment-table th:nth-child(n+3),#znPage .zn-payment-table td:nth-child(n+3){text-align:right;}
 #znPage .zn-payment-table td:nth-child(2){white-space:nowrap;}
 @media(max-width:800px){#znPage .zn-payment-summary{grid-template-columns:1fr;}#znPage .zn-payment-table-scroll{overflow-x:auto;}#znPage .zn-payment-table{min-width:760px;}}
