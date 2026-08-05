@@ -120,6 +120,25 @@
 #nmPage .nm-detail tr.nm-item:hover td{background:rgba(79,124,255,.08)}
 </style>
 
+
+<style id="zn-page-css">
+#znPage{position:fixed;inset:0;z-index:60;background:var(--bg);overflow:auto}
+#znPage .zn-wrap{max-width:1500px;margin:0 auto;padding:24px 28px}
+#znPage .zn-filter{display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+#znPage .zn-filter label{font-size:12px;color:var(--text2);display:block;margin-bottom:4px}
+#znPage .zn-filter input,#znPage .zn-filter select{background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 10px;font-size:13px;min-width:150px}
+#znPage .zn-filter .wide{min-width:260px}
+#znPage .zn-table-wrap{overflow:auto;max-height:calc(100vh - 380px);border:1px solid var(--border);border-radius:10px}
+#znPage table{min-width:1500px;font-size:12px}
+#znPage th{position:sticky;top:0;background:var(--panel);z-index:2;white-space:nowrap}
+#znPage td{white-space:nowrap;max-width:300px;overflow:hidden;text-overflow:ellipsis}
+#znPage .zn-num{text-align:right}
+#znPage .zn-status{padding:3px 8px;border-radius:999px;background:rgba(79,124,255,.12);color:#9db5ff}
+#znPage .zn-empty{padding:30px;text-align:center;color:var(--text2)}
+#znPage .zn-meta{font-size:12px;color:var(--text2);margin-top:4px}
+@media(max-width:900px){#znPage .zn-wrap{padding:16px}.zn-table-wrap{max-height:calc(100vh - 430px)!important}}
+</style>
+
 </head>
 <body>
 
@@ -294,6 +313,68 @@
 </div>
 
 
+
+<!-- ЗАКАЗ-НАРЯДЫ: отдельный раздел, данные из публичного тестового Google Sheets -->
+<div id="znPage" class="hidden">
+  <div class="zn-wrap">
+    <div class="topbar">
+      <div>
+        <h1>🔧 Заказ-наряды</h1>
+        <div id="znDateLabel" class="zn-meta">Источник: Google Sheets → ЗНАРЯД</div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <button class="btn secondary" id="znBackBtn">← Назад</button>
+        <button class="btn" id="znRefreshBtn">↻ Обновить</button>
+      </div>
+    </div>
+
+    <div class="cards" id="znCards"></div>
+
+    <div class="panel zn-filter">
+      <div>
+        <label>Поиск</label>
+        <input class="wide" id="znSearch" placeholder="Номер / контрагент / VIN / гос. номер / мастер">
+      </div>
+      <div>
+        <label>С даты</label>
+        <input type="date" id="znFrom">
+      </div>
+      <div>
+        <label>По дату</label>
+        <input type="date" id="znTo">
+      </div>
+      <div>
+        <label>Организация</label>
+        <select id="znOrg"><option value="">Все организации</option></select>
+      </div>
+      <div>
+        <label>Состояние</label>
+        <select id="znState"><option value="">Все состояния</option></select>
+      </div>
+      <div>
+        <label>Мастер</label>
+        <select id="znMaster"><option value="">Все мастера</option></select>
+      </div>
+      <div>
+        <label>Цех</label>
+        <select id="znShop"><option value="">Все цеха</option></select>
+      </div>
+      <button class="btn secondary" id="znClear">Сбросить</button>
+      <span id="znResultInfo" style="font-size:12px;color:var(--text2);"></span>
+    </div>
+
+    <div class="panel">
+      <div class="zn-table-wrap">
+        <table>
+          <thead id="znHead"></thead>
+          <tbody id="znBody"></tbody>
+        </table>
+      </div>
+      <div id="znErr" style="color:var(--red);font-size:13px;white-space:pre-wrap;margin-top:10px;"></div>
+    </div>
+  </div>
+</div>
+
 <!-- НОМЕНКЛАТУРА: отдельная страница-оверлей. Основной дашборд не изменяет. -->
 <div id="nmPage" class="hidden" style="position:fixed;inset:0;z-index:50;background:var(--bg);overflow:auto;">
   <div style="max-width:1300px;margin:0 auto;padding:24px 28px;">
@@ -379,6 +460,9 @@ const MAIN_SHEETS = [
 ];
 const LOG_SHEET = "logs";
 const SCOPES = "https://www.googleapis.com/auth/spreadsheets.readonly";
+// Тестовый публичный Google Sheets для раздела «Заказ-наряды».
+const ZN_SPREADSHEET_ID = "1xCmvibrmyf9h0xHoPEQiZ6SDchoXtPeFXD3ZV_BDX1M";
+const ZN_GID = "583249461";
 // =========================================
 
 let accessToken = null;
@@ -429,6 +513,7 @@ function buildSidebar(){
   MAIN_SHEETS.forEach(name => {
     html += `<a href="#" data-company="${name}" class="${selectedCompany===name?"active":""}">${name}</a>`;
   });
+  html += `<a href="#" data-zn="1">🔧 Заказ-наряды</a>`;
   html += `<a href="#" data-nomenclature="1">📦 Номенклатура</a>`;
   nav.innerHTML = html;
   nav.querySelectorAll("a").forEach(a => {
@@ -438,7 +523,12 @@ function buildSidebar(){
         openNomenclaturePage();
         return;
       }
+      if (a.dataset.zn === "1") {
+        openZNPage();
+        return;
+      }
       closeNomenclaturePage();
+      closeZNPage();
       selectedCompany = a.dataset.company;
       buildSidebar();
       loadAll();
@@ -1176,6 +1266,136 @@ document.getElementById("exportCsvBtn").onclick = () => {
 };
 
 document.getElementById("printBtn").onclick = () => window.print();
+</script>
+
+
+<script id="zn-page-js">
+let znRows=[];
+let znHeaders=[];
+const ZN_HEADERS_EXPECTED = [
+  "Есть файлы","Номер","Дата","Организация","Состояние заказ-наряда",
+  "Сводный ремонтный заказ","Время выполнения работ","Контрагент","Мастер","VIN",
+  "Сумма документа","Валюта","Сумма деталей","Сумма работ","Цех","Автор","Гос номер"
+];
+
+function znNum(v){
+  if(v===null || v===undefined || v==="") return 0;
+  let s=String(v).replace(/\s/g,"").replace(/\u00A0/g,"").replace(/,/g,".");
+  // 1.234.567,89 / 1 234 567,89 support
+  if(/\.\d{3}(?:\.\d{3})+/.test(s)) s=s.replace(/\./g,"");
+  const n=parseFloat(s);
+  return isNaN(n)?0:n;
+}
+function znMoney(n){ return (n||0).toLocaleString("ru-RU",{maximumFractionDigits:2})+" сум"; }
+function znDate(v){
+  const s=String(v||"").trim();
+  let m=s.match(/(\d{2})\.(\d{2})\.(\d{4})/);
+  if(m) return `${m[3]}-${m[2]}-${m[1]}`;
+  m=s.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if(m) return `${m[1]}-${m[2]}-${m[3]}`;
+  return "";
+}
+function znEscape(v){
+  return String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function znField(row,name){
+  const i=znHeaders.indexOf(name);
+  return i>=0 ? String(row[i]??"").trim() : "";
+}
+function znBuildOptions(id,name){
+  const sel=document.getElementById(id); if(!sel)return;
+  const cur=sel.value, vals=new Set();
+  znRows.forEach(r=>{const v=znField(r,name); if(v) vals.add(v);});
+  sel.innerHTML=`<option value="">Все ${name===\"Организация\"?\"организации\":name===\"Состояние заказ-наряда\"?\"состояния\":name.toLowerCase()+\"а\"}</option>`+
+    Array.from(vals).sort((a,b)=>a.localeCompare(b,"ru")).map(v=>`<option value="${znEscape(v)}">${znEscape(v)}</option>`).join("");
+  sel.value=cur;
+}
+function znFiltered(){
+  const q=(document.getElementById("znSearch").value||"").toLowerCase().trim();
+  const from=document.getElementById("znFrom").value, to=document.getElementById("znTo").value;
+  const org=document.getElementById("znOrg").value, state=document.getElementById("znState").value;
+  const master=document.getElementById("znMaster").value, shop=document.getElementById("znShop").value;
+  return znRows.filter(r=>{
+    const date=znDate(znField(r,"Дата"));
+    const hay=["Номер","Организация","Состояние заказ-наряда","Контрагент","Мастер","VIN","Гос номер","Автор","Цех"].map(k=>znField(r,k)).join(" ").toLowerCase();
+    return (!q || hay.includes(q)) && (!from || (date && date>=from)) && (!to || (date && date<=to))
+      && (!org || znField(r,"Организация")===org) && (!state || znField(r,"Состояние заказ-наряда")===state)
+      && (!master || znField(r,"Мастер")===master) && (!shop || znField(r,"Цех")===shop);
+  });
+}
+function renderZNCards(rows){
+  const total=rows.reduce((s,r)=>s+znNum(znField(r,"Сумма документа")),0);
+  const parts=rows.reduce((s,r)=>s+znNum(znField(r,"Сумма деталей")),0);
+  const works=rows.reduce((s,r)=>s+znNum(znField(r,"Сумма работ")),0);
+  const vins=new Set(rows.map(r=>znField(r,"VIN")).filter(Boolean)).size;
+  document.getElementById("znCards").innerHTML=[
+    ["Заказ-нарядов",rows.length],
+    ["Сумма документов",znMoney(total)],
+    ["Сумма деталей",znMoney(parts)],
+    ["Сумма работ",znMoney(works)],
+    ["VIN",vins]
+  ].map(x=>`<div class="card"><div class="label">${x[0]}</div><div class="value">${typeof x[1]==="number"?fmt(x[1]):x[1]}</div></div>`).join("");
+}
+function renderZNTable(rows){
+  const head=document.getElementById("znHead"), body=document.getElementById("znBody");
+  head.innerHTML=`<tr>${znHeaders.map(h=>`<th>${znEscape(h)}</th>`).join("")}</tr>`;
+  if(!rows.length){body.innerHTML=`<tr><td colspan="${znHeaders.length}" class="zn-empty">Нет данных</td></tr>`;return;}
+  body.innerHTML=rows.map(r=>`<tr>${znHeaders.map(h=>{
+    const v=znField(r,h);
+    if(h==="Сумма документа"||h==="Сумма деталей"||h==="Сумма работ") return `<td class="zn-num">${znMoney(znNum(v))}</td>`;
+    if(h==="Состояние заказ-наряда" && v) return `<td><span class="zn-status">${znEscape(v)}</span></td>`;
+    return `<td title="${znEscape(v)}">${znEscape(v)}</td>`;
+  }).join("")}</tr>`).join("");
+}
+function renderZN(){
+  const rows=znFiltered();
+  renderZNCards(rows); renderZNTable(rows);
+  document.getElementById("znResultInfo").textContent=`Найдено: ${fmt(rows.length)} из ${fmt(znRows.length)}`;
+}
+async function fetchZN(){
+  document.getElementById("znErr").textContent="Загрузка…";
+  // Public test sheet: no OAuth token is required for this endpoint.
+  const url=`https://docs.google.com/spreadsheets/d/${ZN_SPREADSHEET_ID}/gviz/tq?tqx=out:json&gid=${ZN_GID}`;
+  const res=await fetch(url,{cache:"no-store"});
+  if(!res.ok) throw new Error(`Google Sheets: ${res.status}`);
+  const text=await res.text();
+  const start=text.indexOf("{"); const end=text.lastIndexOf("}");
+  if(start<0||end<0) throw new Error("Google Sheets не вернул данные. Проверьте общий доступ к таблице.");
+  const data=JSON.parse(text.slice(start,end+1));
+  const cols=(data.table?.cols||[]).map(c=>String(c.label||c.id||""));
+  const rows=(data.table?.rows||[]).map(row=>(row.c||[]).map(c=>c?.f ?? c?.v ?? ""));
+  znHeaders=cols.length?cols:ZN_HEADERS_EXPECTED;
+  // Google GViz may return empty labels; fall back to the exact source structure.
+  if(znHeaders.length<17 || znHeaders.every(x=>!x)) znHeaders=ZN_HEADERS_EXPECTED.slice();
+  znRows=rows.filter(r=>r.some(v=>String(v??"").trim()!==""));
+  document.getElementById("znDateLabel").textContent=`Источник: Google Sheets → ЗНАРЯД · обновлено: ${new Date().toLocaleString("ru-RU")} · строк: ${fmt(znRows.length)}`;
+  document.getElementById("znErr").textContent="";
+  [
+    ["znOrg","Организация"],["znState","Состояние заказ-наряда"],["znMaster","Мастер"],["znShop","Цех"]
+  ].forEach(([id,name])=>znBuildOptions(id,name));
+  renderZN();
+}
+function openZNPage(){
+  closeNomenclaturePage();
+  document.getElementById("znPage").classList.remove("hidden");
+  if(!znRows.length) fetchZN().catch(e=>document.getElementById("znErr").textContent="Ошибка загрузки ЗН: "+e.message);
+  else renderZN();
+}
+function closeZNPage(){ document.getElementById("znPage").classList.add("hidden"); }
+
+document.addEventListener("DOMContentLoaded",()=>{
+  document.getElementById("znBackBtn").onclick=()=>closeZNPage();
+  document.getElementById("znRefreshBtn").onclick=()=>fetchZN().catch(e=>document.getElementById("znErr").textContent="Ошибка загрузки ЗН: "+e.message);
+  ["znSearch","znFrom","znTo"].forEach(id=>document.getElementById(id).oninput=renderZN);
+  ["znOrg","znState","znMaster","znShop"].forEach(id=>document.getElementById(id).onchange=renderZN);
+  document.getElementById("znClear").onclick=()=>{
+    document.getElementById("znSearch").value="";
+    document.getElementById("znFrom").value="";
+    document.getElementById("znTo").value="";
+    ["znOrg","znState","znMaster","znShop"].forEach(id=>document.getElementById(id).value="");
+    renderZN();
+  };
+});
 </script>
 
 <script id="nm-only-js">
