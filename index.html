@@ -240,6 +240,10 @@
 @media(max-width:800px){#znPage .zn-kpi-grid{grid-template-columns:repeat(2,1fr);}#znPage .zn-chart-box{height:240px;}#znPage .zn-detail-grid{grid-template-columns:1fr 1fr;}#znPage .zn-section-head{align-items:flex-start;flex-direction:column;}}
 @media(max-width:520px){#znPage .zn-kpi-grid{grid-template-columns:1fr;}#znPage .zn-detail-grid{grid-template-columns:1fr;}}
 
+
+#znPage .zn-table-pager{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 4px 0;}
+#znPage .zn-pager-buttons{display:flex;align-items:center;gap:8px;}
+#znPage .zn-pager-buttons .btn{min-width:38px;padding:7px 10px;}
 </style>
 
 <style id="nm-only-css">
@@ -555,6 +559,7 @@
       <div><label>С даты</label><input type="date" id="znFrom"></div>
       <div><label>По дату</label><input type="date" id="znTo"></div>
       <div><label>Организация</label><select id="znOrg"><option value="">Все организации</option></select></div>
+      <div><label>Контрагент</label><select id="znCounterparty"><option value="">Все контрагенты</option></select></div>
       <div><label>Состояние</label><select id="znState"><option value="">Все состояния</option></select></div>
       <div><label>Вид ремонта</label><select id="znRepair"><option value="">Все виды ремонта</option></select></div>
       <div><label>Оплата</label><select id="znPaymentType"><option value="">Все</option><option value="Платный">Платный</option><option value="Бесплатный">Бесплатный</option></select></div>
@@ -618,6 +623,14 @@
           <thead id="znHead"></thead>
           <tbody id="znBody"></tbody>
         </table>
+      </div>
+      <div class="zn-table-pager" id="znTablePager">
+        <div class="zn-muted" id="znPagerInfo"></div>
+        <div class="zn-pager-buttons">
+          <button class="btn secondary" id="znPrevPage">←</button>
+          <span id="znPageNumber" class="zn-muted"></span>
+          <button class="btn secondary" id="znNextPage">→</button>
+        </div>
       </div>
       <div id="znErr" style="color:var(--red);font-size:13px;white-space:pre-wrap;margin-top:10px;"></div>
     </div>
@@ -1564,6 +1577,8 @@ document.getElementById("printBtn").onclick = () => window.print();
 let znRows=[];
 let znHeaders=[];
 let znStateChart=null, znMonthlyChart=null, znPartsWorksChart=null, znShopChart=null;
+let znCurrentPage=1;
+const ZN_PAGE_SIZE=20;
 
 const ZN_HEADERS_EXPECTED=[
   "Номер","Дата","Организация","Состояние заказ-наряда","Контрагент",
@@ -1573,13 +1588,17 @@ const ZN_HEADERS_EXPECTED=[
 
 function znNum(v){
   if(v===null||v===undefined||v==="") return 0;
-  let s=String(v).replace(/\s/g,"").replace(/\u00A0/g,"");
+  let s=String(v).replace(/\s/g,"").replace(/\u00A0/g,"").replace(/сум/gi,"").trim();
+  if(!s) return 0;
   if(s.includes(",")&&s.includes(".")){
     if(s.lastIndexOf(",")>s.lastIndexOf(".")) s=s.replace(/\./g,"").replace(",",".");
     else s=s.replace(/,/g,"");
-  }else if(s.includes(",")) s=s.replace(",",".");
-  else if(/^\d{1,3}(\.\d{3})+$/.test(s)) s=s.replace(/\./g,"");
-  const n=parseFloat(s);
+  }else if(s.includes(",")){
+    // 1,234,567 = thousands; 1234,50 = decimal
+    if((s.match(/,/g)||[]).length>1 || /,\d{3}$/.test(s)) s=s.replace(/,/g,"");
+    else s=s.replace(",",".");
+  }else if(/^[-+]?\d{1,3}(\.\d{3})+$/.test(s)) s=s.replace(/\./g,"");
+  const n=parseFloat(s.replace(/[^0-9.+-]/g,""));
   return Number.isFinite(n)?n:0;
 }
 function znMoney(n){return Number(n||0).toLocaleString("ru-RU",{maximumFractionDigits:2})+" сум";}
@@ -1593,8 +1612,26 @@ function znDate(v){
 }
 function znMonth(v){const d=znDate(v); return d?d.slice(0,7):"";}
 function znEscape(v){return String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");}
-function znField(row,name){const i=znHeaders.indexOf(name);return i>=0?String(row[i]??"").trim():"";}
-function znTotal(row){return znNum(znField(row,"Сумма деталей"))+znNum(znField(row,"Сумма работ"));}
+function znNormHeader(v){return String(v??"").replace(/\n/g," ").replace(/\s+/g," ").trim().toLowerCase();}
+const ZN_HEADER_ALIASES={
+  "Сумма документа":["Сумма документа","Сумма ЗН","Итого","Итого по документу"],
+  "Сумма деталей":["Сумма деталей","Детали","Сумма запчастей"],
+  "Сумма работ":["Сумма работ","Работы","Стоимость работ"],
+  "Гос номер":["Гос номер","Гос. номер","Госномер"],
+  "Время выполнения работы":["Время выполнения работы","Время выполнения работ"],
+  "Сводный ремонтный заказ":["Сводный ремонтный заказ","Сводный ремонтный ЗН"]
+};
+function znField(row,name){
+  const candidates=[name,...(ZN_HEADER_ALIASES[name]||[])].map(znNormHeader);
+  let i=-1;
+  for(const c of candidates){i=znHeaders.findIndex(h=>znNormHeader(h)===c);if(i>=0)break;}
+  return i>=0?String(row[i]??"").trim():"";
+}
+function znTotal(row){
+  const doc=znNum(znField(row,"Сумма документа"));
+  if(doc!==0) return doc;
+  return znNum(znField(row,"Сумма деталей"))+znNum(znField(row,"Сумма работ"));
+}
 function znBuildOptions(id,name,label){
   const sel=document.getElementById(id); if(!sel)return;
   const cur=sel.value, vals=new Set();
@@ -1641,6 +1678,7 @@ function znFiltered(){
   const q=(document.getElementById("znSearch").value||"").toLowerCase().trim();
   const from=document.getElementById("znFrom").value,to=document.getElementById("znTo").value;
   const org=document.getElementById("znOrg").value;
+  const counterparty=document.getElementById("znCounterparty")?.value||"";
   const state=document.getElementById("znState").value;
   const repair=document.getElementById("znRepair").value;
   const paymentType=document.getElementById("znPaymentType").value;
@@ -1659,6 +1697,7 @@ function znFiltered(){
       &&(!from||(date&&date>=from))
       &&(!to||(date&&date<=to))
       &&(!org||znField(r,"Организация")===org)
+      &&(!counterparty||znField(r,"Контрагент")===counterparty)
       &&(!state||znField(r,"Состояние заказ-наряда")===state)
       &&(!repair||znField(r,"Вид ремонта")===repair)
       &&(!paymentType||znPaymentClass(znField(r,"Вид ремонта"))===paymentType)
@@ -1890,32 +1929,46 @@ function znRenderTable(rows){
   const visibleHeaders=znHeaders.filter(h=>h!=="Автор");
   head.innerHTML=`<tr>${visibleHeaders.map(h=>`<th>${znEscape(h)}</th>`).join("")}<th>Оплата</th></tr>`;
 
-  if(!rows.length){
+  const totalPages=Math.max(1,Math.ceil(rows.length/ZN_PAGE_SIZE));
+  if(znCurrentPage>totalPages)znCurrentPage=totalPages;
+  const start=(znCurrentPage-1)*ZN_PAGE_SIZE;
+  const pageRows=rows.slice(start,start+ZN_PAGE_SIZE);
+
+  if(!pageRows.length){
     body.innerHTML=`<tr><td colspan="${visibleHeaders.length+1}" class="zn-empty">Нет данных по выбранным фильтрам</td></tr>`;
-    return;
+  }else{
+    body.innerHTML=pageRows.map((r,ri)=>
+      `<tr class="zn-clickable" data-zn-row="${ri}">
+        ${visibleHeaders.map(h=>{
+          const v=znField(r,h);
+          if(["Сумма документа","Сумма деталей","Сумма работ"].includes(h))
+            return `<td class="zn-num">${znMoney(znNum(v))}</td>`;
+          if(h==="Состояние заказ-наряда"&&v)
+            return `<td><span class="zn-status">${znEscape(v)}</span></td>`;
+          return `<td title="${znEscape(v)}">${znEscape(v)}</td>`;
+        }).join("")}
+        <td><span class="zn-payment-badge ${znPaymentClass(znField(r,"Вид ремонта"))==="Бесплатный"?'free':'paid'}">${znEscape(znPaymentClass(znField(r,"Вид ремонта")))}</span></td>
+      </tr>`
+    ).join("");
+
+    body.querySelectorAll("tr[data-zn-row]").forEach(tr=>{
+      tr.onclick=()=>{
+        const i=Number(tr.dataset.znRow);
+        znOpenModal(pageRows[i]);
+      };
+    });
   }
 
-  body.innerHTML=rows.map((r,ri)=>
-    `<tr class="zn-clickable" data-zn-row="${ri}">
-      ${visibleHeaders.map(h=>{
-        const v=znField(r,h);
-        if(["Сумма деталей","Сумма работ"].includes(h))
-          return `<td class="zn-num">${znMoney(znNum(v))}</td>`;
-        if(h==="Состояние заказ-наряда"&&v)
-          return `<td><span class="zn-status">${znEscape(v)}</span></td>`;
-        return `<td title="${znEscape(v)}">${znEscape(v)}</td>`;
-      }).join("")}
-      <td>${znEscape(znPaymentClass(znField(r,"Вид ремонта"))||"—")}</td>
-    </tr>`
-  ).join("");
-
-  body.querySelectorAll("tr[data-zn-row]").forEach(tr=>{
-    tr.onclick=()=>{
-      const i=Number(tr.dataset.znRow);
-      znOpenModal(rows[i]);
-    };
-  });
+  const info=document.getElementById("znPagerInfo");
+  const pageNum=document.getElementById("znPageNumber");
+  const prev=document.getElementById("znPrevPage");
+  const next=document.getElementById("znNextPage");
+  if(info)info.textContent=rows.length?`${znCount(start+1)}–${znCount(Math.min(start+pageRows.length,rows.length))} из ${znCount(rows.length)}`:"0 из 0";
+  if(pageNum)pageNum.textContent=`${znCurrentPage} / ${totalPages}`;
+  if(prev)prev.disabled=znCurrentPage<=1;
+  if(next)next.disabled=znCurrentPage>=totalPages;
 }
+
 function znOpenModal(row){
   const num=znField(row,"Номер")||"Без номера";
   document.getElementById("znModalTitle").textContent=`Заказ-наряд № ${num}`;
@@ -1972,13 +2025,12 @@ async function fetchZN(){
   const cols=(data.table?.cols||[]).map(c=>String(c.label||c.id||""));
   const rows=(data.table?.rows||[]).map(row=>(row.c||[]).map(c=>c?.f??c?.v??""));
 
-  znHeaders=cols.filter(x=>x!=="");
-  if(znHeaders.length!==ZN_HEADERS_EXPECTED.length ||
-     !ZN_HEADERS_EXPECTED.every(h=>znHeaders.includes(h))){
-    console.warn("Структура Google Sheets отличается от ожидаемой.",znHeaders);
-  }
+  znHeaders=cols.map(x=>String(x||"").replace(/\n/g," ").replace(/\s+/g," ").trim());
+  console.info("ЗН headers:",znHeaders);
+  const missing=ZN_HEADERS_EXPECTED.filter(h=>!znHeaders.some(x=>znNormHeader(x)===znNormHeader(h)) && !(ZN_HEADER_ALIASES[h]||[]).some(a=>znHeaders.some(x=>znNormHeader(x)===znNormHeader(a))));
+  if(missing.length) console.warn("Не найдены колонки ЗН:",missing);
 
-  // Выравниваем строки по фактическим заголовкам.
+  // Выравниваем строки по фактическим заголовкам. Пустые/служебные колонки не ломают индексы.
   znRows=rows
     .filter(r=>r.some(v=>String(v??"").trim()!==""))
     .map(r=>{
@@ -1993,6 +2045,7 @@ async function fetchZN(){
 
   [
     ["znOrg","Организация","Все организации"],
+    ["znCounterparty","Контрагент","Все контрагенты"],
     ["znState","Состояние заказ-наряда","Все состояния"],
     ["znRepair","Вид ремонта","Все виды ремонта"],
     ["znDivision","Подразделение","Все подразделения"],
@@ -2017,21 +2070,25 @@ document.addEventListener("DOMContentLoaded",()=>{
     closeZNPage();znCloseModal();
   };
   document.getElementById("znRefreshBtn").onclick=()=>{
+    znCurrentPage=1;
     fetchZN().catch(e=>document.getElementById("znErr").textContent="Ошибка загрузки ЗН: "+e.message);
   };
+  document.getElementById("znPrevPage").onclick=()=>{if(znCurrentPage>1){znCurrentPage--;renderZN();}};
+  document.getElementById("znNextPage").onclick=()=>{znCurrentPage++;renderZN();};
 
   ["znSearch","znFrom","znTo"].forEach(id=>{
-    document.getElementById(id).oninput=renderZN;
+    document.getElementById(id).oninput=()=>{znCurrentPage=1;renderZN();};
   });
-  ["znOrg","znState","znRepair","znPaymentType","znDivision","znShop","znPriceType"].forEach(id=>{
-    document.getElementById(id).onchange=renderZN;
+  ["znOrg","znCounterparty","znState","znRepair","znPaymentType","znDivision","znShop","znPriceType"].forEach(id=>{
+    document.getElementById(id).onchange=()=>{znCurrentPage=1;renderZN();};
   });
 
   document.getElementById("znClear").onclick=()=>{
+    znCurrentPage=1;
     document.getElementById("znSearch").value="";
     document.getElementById("znFrom").value="";
     document.getElementById("znTo").value="";
-    ["znOrg","znState","znRepair","znPaymentType","znDivision","znShop","znPriceType"].forEach(id=>{
+    ["znOrg","znCounterparty","znState","znRepair","znPaymentType","znDivision","znShop","znPriceType"].forEach(id=>{
       document.getElementById(id).value="";
     });
     renderZN();
