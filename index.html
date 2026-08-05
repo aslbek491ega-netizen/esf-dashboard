@@ -552,7 +552,7 @@
       </div>
     </div>
 
-    <div class="cards zn-kpi-grid" id="znCards"></div>
+    <div class="cards zn-kpi-grid" id="znCards"><div class="card"><div class="label">Заказ-нарядов</div><div class="value">Загрузка…</div></div></div>
 
     <div class="panel zn-filter">
       <div><label>Поиск</label><input class="wide" id="znSearch" placeholder="Номер / контрагент / VIN / гос. номер / вид ремонта"></div>
@@ -2010,52 +2010,82 @@ function renderZN(){
 }
 
 async function fetchZN(){
-  document.getElementById("znErr").textContent="Загрузка…";
+  const err=document.getElementById("znErr");
+  const info=document.getElementById("znDateLabel");
+  if(err) err.textContent="";
+  if(info) info.textContent="Источник: Google Sheets → ЗНАРЯД · загрузка данных…";
 
-  const url=`https://docs.google.com/spreadsheets/d/${ZN_SPREADSHEET_ID}/gviz/tq?tqx=out:json&gid=${ZN_GID}`;
-  const res=await fetch(url,{cache:"no-store"});
-  if(!res.ok)throw new Error(`Google Sheets: ${res.status}`);
+  // ВАЖНО: не делаем десятки запросов и не строим DOM для 35 000 строк.
+  // Загружаем ЗН одним запросом через JSONP (без CORS/авторизации браузера),
+  // а на экран выводим только текущую страницу.
+  const base=`https://docs.google.com/spreadsheets/d/${ZN_SPREADSHEET_ID}/gviz/tq`;
+  const query=`select * limit 50000`;
+  const callbackName=`__znGviz_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const url=`${base}?tqx=${encodeURIComponent("out:json;responseHandler:"+callbackName)}&gid=${encodeURIComponent(ZN_GID)}&tq=${encodeURIComponent(query)}`;
 
-  const text=await res.text();
-  const start=text.indexOf("{"),end=text.lastIndexOf("}");
-  if(start<0||end<0)
-    throw new Error("Google Sheets не вернул данные. Проверьте общий доступ к таблице.");
-
-  const data=JSON.parse(text.slice(start,end+1));
-  const cols=(data.table?.cols||[]).map(c=>String(c.label||c.id||""));
-  const rows=(data.table?.rows||[]).map(row=>(row.c||[]).map(c=>c?.f??c?.v??""));
-
-  znHeaders=cols.map(x=>String(x||"").replace(/\n/g," ").replace(/\s+/g," ").trim());
-  console.info("ЗН headers:",znHeaders);
-  const missing=ZN_HEADERS_EXPECTED.filter(h=>!znHeaders.some(x=>znNormHeader(x)===znNormHeader(h)) && !(ZN_HEADER_ALIASES[h]||[]).some(a=>znHeaders.some(x=>znNormHeader(x)===znNormHeader(a))));
-  if(missing.length) console.warn("Не найдены колонки ЗН:",missing);
-
-  // Выравниваем строки по фактическим заголовкам. Пустые/служебные колонки не ломают индексы.
-  znRows=rows
-    .filter(r=>r.some(v=>String(v??"").trim()!==""))
-    .map(r=>{
-      const a=r.slice();
-      while(a.length<znHeaders.length)a.push("");
-      return a.slice(0,znHeaders.length);
+  let timer=null;
+  let script=null;
+  try{
+    const data=await new Promise((resolve,reject)=>{
+      let done=false;
+      const finish=(fn,val)=>{
+        if(done)return;
+        done=true;
+        if(timer)clearTimeout(timer);
+        try{delete window[callbackName];}catch(_){window[callbackName]=undefined;}
+        if(script)script.remove();
+        fn(val);
+      };
+      window[callbackName]=(payload)=>finish(resolve,payload);
+      script=document.createElement("script");
+      script.async=true;
+      script.src=url;
+      script.onerror=()=>finish(reject,new Error("Google Sheets не вернул данные. Проверьте общий доступ к таблице «ЗНАРЯД»."));
+      timer=setTimeout(()=>finish(reject,new Error("Google Sheets отвечает слишком долго. Проверьте интернет и доступ к таблице.")),90000);
+      document.head.appendChild(script);
     });
 
-  document.getElementById("znDateLabel").textContent=
-    `Источник: Google Sheets → ЗНАРЯД · обновлено: ${new Date().toLocaleString("ru-RU")} · строк: ${znCount(znRows.length)}`;
-  document.getElementById("znErr").textContent="";
+    const cols=(data?.table?.cols||[]).map(c=>String(c.label||c.id||""));
+    const all=(data?.table?.rows||[]).map(row=>(row.c||[]).map(c=>c?.f??c?.v??""));
 
-  [
-    ["znOrg","Организация","Все организации"],
-    ["znCounterparty","Контрагент","Все контрагенты"],
-    ["znState","Состояние заказ-наряда","Все состояния"],
-    ["znRepair","Вид ремонта","Все виды ремонта"],
-    ["znDivision","Подразделение","Все подразделения"],
-    ["znShop","Цех","Все цеха"],
-    ["znPriceType","Тип цен","Все типы цен"]
-  ].forEach(x=>znBuildOptions(x[0],x[1],x[2]));
+    znHeaders=cols.map(x=>String(x||"").replace(/\n/g," ").replace(/\s+/g," ").trim());
+    znRows=all
+      .filter(r=>r.some(v=>String(v??"").trim()!==""))
+      .map(r=>{
+        const a=r.slice();
+        while(a.length<znHeaders.length)a.push("");
+        return a.slice(0,znHeaders.length);
+      });
 
-  renderZN();
+    console.info("ЗН headers:",znHeaders,"rows:",znRows.length);
+    const missing=ZN_HEADERS_EXPECTED.filter(h=>
+      !znHeaders.some(x=>znNormHeader(x)===znNormHeader(h)) &&
+      !(ZN_HEADER_ALIASES[h]||[]).some(a=>znHeaders.some(x=>znNormHeader(x)===znNormHeader(a)))
+    );
+    if(missing.length) console.warn("Не найдены колонки ЗН:",missing);
+
+    document.getElementById("znDateLabel").textContent=
+      `Источник: Google Sheets → ЗНАРЯД · обновлено: ${new Date().toLocaleString("ru-RU")} · строк: ${znCount(znRows.length)}`;
+    if(err) err.textContent="";
+
+    [
+      ["znOrg","Организация","Все организации"],
+      ["znCounterparty","Контрагент","Все контрагенты"],
+      ["znState","Состояние заказ-наряда","Все состояния"],
+      ["znRepair","Вид ремонта","Все виды ремонта"],
+      ["znDivision","Подразделение","Все подразделения"],
+      ["znShop","Цех","Все цеха"],
+      ["znPriceType","Тип цен","Все типы цен"]
+    ].forEach(x=>znBuildOptions(x[0],x[1],x[2]));
+
+    znCurrentPage=1;
+    renderZN();
+  }catch(e){
+    console.error("Ошибка загрузки ЗН:",e);
+    if(info) info.textContent="Источник: Google Sheets → ЗНАРЯД";
+    if(err) err.textContent="Ошибка загрузки ЗН: "+(e?.message||e);
+  }
 }
-
 function openZNPage(){
   closeNomenclaturePage();
   document.getElementById("znPage").classList.remove("hidden");
