@@ -330,9 +330,25 @@
 #znPage #znRepair{max-width:230px;}
 #znPage #znRepair option{max-width:230px;}
 
-/* TOP видов ремонта — компактнее, чтобы не занимал большой экран */
-#znPage #znTopRepairs{max-height:190px;gap:5px;}
-#znPage #znTopRepairs .zn-rank-row{padding:6px 8px;min-height:30px;}
+/* TOP-10: оба блока должны быть полностью одинаковыми по высоте и строкам */
+#znPage #znTopCounterparties,
+#znPage #znTopRepairs{
+  height:300px;
+  max-height:300px;
+  overflow-y:auto;
+  overflow-x:hidden;
+  gap:6px;
+  padding-right:4px;
+  box-sizing:border-box;
+}
+#znPage #znTopCounterparties .zn-rank-row,
+#znPage #znTopRepairs .zn-rank-row{
+  flex:0 0 40px;
+  height:40px;
+  min-height:40px;
+  padding:6px 10px;
+  box-sizing:border-box;
+}
 
 @media(max-width:1250px){
   #znPage .zn-filter{grid-template-columns:repeat(4,minmax(130px,1fr));}
