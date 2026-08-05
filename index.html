@@ -82,6 +82,33 @@
     .main{max-width:none;padding:10px}
     .panel,.card{background:#fff;color:#111;border:1px solid #ccc}
   }
+
+#znPage .zn-kpi-grid{grid-template-columns:repeat(7,1fr);}
+#znPage .zn-chart-box{height:280px;position:relative;}
+#znPage .zn-doughnut-box{height:260px;max-width:520px;margin:0 auto;}
+#znPage .zn-ranking{display:flex;flex-direction:column;gap:8px;max-height:320px;overflow:auto;}
+#znPage .zn-rank-row{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--border);border-radius:9px;background:var(--panel2);}
+#znPage .zn-rank-num{color:var(--text2);font-weight:700;}
+#znPage .zn-rank-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+#znPage .zn-rank-value{font-weight:700;white-space:nowrap;}
+#znPage .zn-section-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;}
+#znPage .zn-muted{font-size:12px;color:var(--text2);}
+#znPage tbody tr.zn-clickable{cursor:pointer;transition:background .12s;}
+#znPage tbody tr.zn-clickable:hover{background:rgba(79,124,255,.08);}
+#znPage .zn-status{display:inline-block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.zn-modal{position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px;}
+.zn-modal.hidden{display:none !important;}
+.zn-modal-card{width:min(1050px,96vw);max-height:90vh;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.4);}
+.zn-modal-head{display:flex;justify-content:space-between;gap:15px;align-items:flex-start;margin-bottom:18px;}
+.zn-modal-head h2{margin:0 0 5px;font-size:20px;}
+.zn-detail-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+.zn-detail-item{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:11px 12px;min-width:0;}
+.zn-detail-item .k{font-size:11px;color:var(--text2);margin-bottom:5px;}
+.zn-detail-item .v{font-size:13px;font-weight:600;overflow-wrap:anywhere;}
+@media(max-width:1200px){#znPage .zn-kpi-grid{grid-template-columns:repeat(4,1fr);}}
+@media(max-width:800px){#znPage .zn-kpi-grid{grid-template-columns:repeat(2,1fr);}#znPage .zn-chart-box{height:240px;}#znPage .zn-detail-grid{grid-template-columns:1fr 1fr;}#znPage .zn-section-head{align-items:flex-start;flex-direction:column;}}
+@media(max-width:520px){#znPage .zn-kpi-grid{grid-template-columns:1fr;}#znPage .zn-detail-grid{grid-template-columns:1fr;}}
+
 </style>
 
 <style id="nm-only-css">
@@ -314,7 +341,7 @@
 
 
 
-<!-- ЗАКАЗ-НАРЯДЫ: отдельный раздел, данные из публичного тестового Google Sheets -->
+<!-- ЗАКАЗ-НАРЯДЫ: отдельный раздел -->
 <div id="znPage" class="hidden">
   <div class="zn-wrap">
     <div class="topbar">
@@ -328,42 +355,58 @@
       </div>
     </div>
 
-    <div class="cards" id="znCards"></div>
+    <div class="cards zn-kpi-grid" id="znCards"></div>
 
     <div class="panel zn-filter">
-      <div>
-        <label>Поиск</label>
-        <input class="wide" id="znSearch" placeholder="Номер / контрагент / VIN / гос. номер / мастер">
-      </div>
-      <div>
-        <label>С даты</label>
-        <input type="date" id="znFrom">
-      </div>
-      <div>
-        <label>По дату</label>
-        <input type="date" id="znTo">
-      </div>
-      <div>
-        <label>Организация</label>
-        <select id="znOrg"><option value="">Все организации</option></select>
-      </div>
-      <div>
-        <label>Состояние</label>
-        <select id="znState"><option value="">Все состояния</option></select>
-      </div>
-      <div>
-        <label>Мастер</label>
-        <select id="znMaster"><option value="">Все мастера</option></select>
-      </div>
-      <div>
-        <label>Цех</label>
-        <select id="znShop"><option value="">Все цеха</option></select>
-      </div>
+      <div><label>Поиск</label><input class="wide" id="znSearch" placeholder="Номер / контрагент / VIN / гос. номер / мастер"></div>
+      <div><label>С даты</label><input type="date" id="znFrom"></div>
+      <div><label>По дату</label><input type="date" id="znTo"></div>
+      <div><label>Организация</label><select id="znOrg"><option value="">Все организации</option></select></div>
+      <div><label>Состояние</label><select id="znState"><option value="">Все состояния</option></select></div>
+      <div><label>Мастер</label><select id="znMaster"><option value="">Все мастера</option></select></div>
+      <div><label>Цех</label><select id="znShop"><option value="">Все цеха</option></select></div>
       <button class="btn secondary" id="znClear">Сбросить</button>
       <span id="znResultInfo" style="font-size:12px;color:var(--text2);"></span>
     </div>
 
-    <div class="panel">
+    <div class="grid2">
+      <div class="panel">
+        <h3>📊 Заказ-наряды по состояниям</h3>
+        <div class="zn-chart-box"><canvas id="znStateChart"></canvas></div>
+      </div>
+      <div class="panel">
+        <h3>📈 Динамика ЗН по месяцам</h3>
+        <div class="zn-chart-box"><canvas id="znMonthlyChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="panel">
+        <h3>💰 Детали и работы</h3>
+        <div class="zn-chart-box zn-doughnut-box"><canvas id="znPartsWorksChart"></canvas></div>
+      </div>
+      <div class="panel">
+        <h3>🏭 ЗН по цехам</h3>
+        <div class="zn-chart-box"><canvas id="znShopChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="panel">
+        <h3>🏆 TOP-10 контрагентов по сумме</h3>
+        <div id="znTopCounterparties" class="zn-ranking"></div>
+      </div>
+      <div class="panel">
+        <h3>👨‍🔧 TOP-10 мастеров по сумме</h3>
+        <div id="znTopMasters" class="zn-ranking"></div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:20px;">
+      <div class="zn-section-head">
+        <h3 style="margin:0;">📋 Реестр заказ-нарядов</h3>
+        <span id="znTableHint" class="zn-muted">Нажмите на строку, чтобы открыть карточку ЗН</span>
+      </div>
       <div class="zn-table-wrap">
         <table>
           <thead id="znHead"></thead>
@@ -372,6 +415,17 @@
       </div>
       <div id="znErr" style="color:var(--red);font-size:13px;white-space:pre-wrap;margin-top:10px;"></div>
     </div>
+  </div>
+</div>
+
+<!-- Карточка выбранного ЗН -->
+<div id="znModal" class="zn-modal hidden">
+  <div class="zn-modal-card">
+    <div class="zn-modal-head">
+      <div><h2 id="znModalTitle">Заказ-наряд</h2><div id="znModalSub" class="zn-muted"></div></div>
+      <button class="btn secondary" id="znModalClose">✕ Закрыть</button>
+    </div>
+    <div id="znModalBody" class="zn-detail-grid"></div>
   </div>
 </div>
 
@@ -524,7 +578,24 @@ function buildSidebar(){
         return;
       }
       if (a.dataset.zn === "1") {
-        openZNPage();
+        try {
+          const page = document.getElementById("znPage");
+          if (!page) throw new Error("Элемент znPage не найден");
+          page.classList.remove("hidden");
+          page.style.display = "block";
+          closeNomenclaturePage();
+          if (!znRows.length) {
+            fetchZN().catch(err => {
+              const box = document.getElementById("znErr");
+              if (box) box.textContent = "Ошибка загрузки ЗН: " + err.message;
+            });
+          } else {
+            renderZN();
+          }
+        } catch (err) {
+          alert("Не удалось открыть раздел «Заказ-наряды»: " + err.message);
+          console.error(err);
+        }
         return;
       }
       closeNomenclaturePage();
@@ -1272,129 +1343,160 @@ document.getElementById("printBtn").onclick = () => window.print();
 <script id="zn-page-js">
 let znRows=[];
 let znHeaders=[];
-const ZN_HEADERS_EXPECTED = [
+let znStateChart=null, znMonthlyChart=null, znPartsWorksChart=null, znShopChart=null;
+const ZN_HEADERS_EXPECTED=[
   "Есть файлы","Номер","Дата","Организация","Состояние заказ-наряда",
   "Сводный ремонтный заказ","Время выполнения работ","Контрагент","Мастер","VIN",
   "Сумма документа","Валюта","Сумма деталей","Сумма работ","Цех","Автор","Гос номер"
 ];
 
 function znNum(v){
-  if(v===null || v===undefined || v==="") return 0;
-  let s=String(v).replace(/\s/g,"").replace(/\u00A0/g,"").replace(/,/g,".");
-  // 1.234.567,89 / 1 234 567,89 support
-  if(/\.\d{3}(?:\.\d{3})+/.test(s)) s=s.replace(/\./g,"");
+  if(v===null||v===undefined||v==="") return 0;
+  let s=String(v).replace(/\s/g,"").replace(/\u00A0/g,"");
+  if(s.includes(",")&&s.includes(".")){
+    if(s.lastIndexOf(",")>s.lastIndexOf(".")) s=s.replace(/\./g,"").replace(",",".");
+    else s=s.replace(/,/g,"");
+  }else if(s.includes(",")) s=s.replace(",",".");
+  else if(/^\d{1,3}(\.\d{3})+$/.test(s)) s=s.replace(/\./g,"");
   const n=parseFloat(s);
-  return isNaN(n)?0:n;
+  return Number.isFinite(n)?n:0;
 }
-function znMoney(n){ return (n||0).toLocaleString("ru-RU",{maximumFractionDigits:2})+" сум"; }
+function znMoney(n){return Number(n||0).toLocaleString("ru-RU",{maximumFractionDigits:2})+" сум";}
+function znCount(n){return Number(n||0).toLocaleString("ru-RU");}
 function znDate(v){
   const s=String(v||"").trim();
-  let m=s.match(/(\d{2})\.(\d{2})\.(\d{4})/);
-  if(m) return `${m[3]}-${m[2]}-${m[1]}`;
-  m=s.match(/(\d{4})-(\d{2})-(\d{2})/);
-  if(m) return `${m[1]}-${m[2]}-${m[3]}`;
+  let m=s.match(/(\d{2})\.(\d{2})\.(\d{4})/); if(m)return `${m[3]}-${m[2]}-${m[1]}`;
+  m=s.match(/(\d{4})-(\d{2})-(\d{2})/); if(m)return `${m[1]}-${m[2]}-${m[3]}`;
   return "";
 }
-function znEscape(v){
-  return String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-}
-function znField(row,name){
-  const i=znHeaders.indexOf(name);
-  return i>=0 ? String(row[i]??"").trim() : "";
-}
+function znMonth(v){const d=znDate(v); return d?d.slice(0,7):"";}
+function znEscape(v){return String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");}
+function znField(row,name){const i=znHeaders.indexOf(name);return i>=0?String(row[i]??"").trim():"";}
 function znBuildOptions(id,name){
   const sel=document.getElementById(id); if(!sel)return;
-  const cur=sel.value, vals=new Set();
-  znRows.forEach(r=>{const v=znField(r,name); if(v) vals.add(v);});
-  sel.innerHTML=`<option value="">Все ${name==="Организация"?"организации":name==="Состояние заказ-наряда"?"состояния":name.toLowerCase()+"а"}</option>`+
-    Array.from(vals).sort((a,b)=>a.localeCompare(b,"ru")).map(v=>`<option value="${znEscape(v)}">${znEscape(v)}</option>`).join("");
+  const cur=sel.value, vals=new Set(); znRows.forEach(r=>{const v=znField(r,name);if(v)vals.add(v);});
+  const label=name==="Организация"?"организации":name==="Состояние заказ-наряда"?"состояния":name==="Мастер"?"мастеров":"цехов";
+  sel.innerHTML=`<option value="">Все ${label}</option>`+Array.from(vals).sort((a,b)=>a.localeCompare(b,"ru")).map(v=>`<option value="${znEscape(v)}">${znEscape(v)}</option>`).join("");
   sel.value=cur;
 }
 function znFiltered(){
   const q=(document.getElementById("znSearch").value||"").toLowerCase().trim();
-  const from=document.getElementById("znFrom").value, to=document.getElementById("znTo").value;
-  const org=document.getElementById("znOrg").value, state=document.getElementById("znState").value;
-  const master=document.getElementById("znMaster").value, shop=document.getElementById("znShop").value;
+  const from=document.getElementById("znFrom").value,to=document.getElementById("znTo").value;
+  const org=document.getElementById("znOrg").value,state=document.getElementById("znState").value,master=document.getElementById("znMaster").value,shop=document.getElementById("znShop").value;
   return znRows.filter(r=>{
     const date=znDate(znField(r,"Дата"));
-    const hay=["Номер","Организация","Состояние заказ-наряда","Контрагент","Мастер","VIN","Гос номер","Автор","Цех"].map(k=>znField(r,k)).join(" ").toLowerCase();
-    return (!q || hay.includes(q)) && (!from || (date && date>=from)) && (!to || (date && date<=to))
-      && (!org || znField(r,"Организация")===org) && (!state || znField(r,"Состояние заказ-наряда")===state)
-      && (!master || znField(r,"Мастер")===master) && (!shop || znField(r,"Цех")===shop);
+    const hay=["Номер","Организация","Состояние заказ-наряда","Контрагент","Мастер","VIN","Гос номер","Автор","Цех","Сводный ремонтный заказ"].map(k=>znField(r,k)).join(" ").toLowerCase();
+    return (!q||hay.includes(q))&&(!from||(date&&date>=from))&&(!to||(date&&date<=to))&&(!org||znField(r,"Организация")===org)&&(!state||znField(r,"Состояние заказ-наряда")===state)&&(!master||znField(r,"Мастер")===master)&&(!shop||znField(r,"Цех")===shop);
   });
 }
+function znDestroyCharts(){[znStateChart,znMonthlyChart,znPartsWorksChart,znShopChart].forEach(c=>{try{c?.destroy()}catch(e){}});znStateChart=znMonthlyChart=znPartsWorksChart=znShopChart=null;}
+function znChartBaseOptions(){return{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:"#eef1f8"}},tooltip:{mode:"index",intersect:false}},scales:{x:{ticks:{color:"#8b93a8"},grid:{color:"rgba(139,147,168,.10)"}},y:{ticks:{color:"#8b93a8"},grid:{color:"rgba(139,147,168,.10)"}}}};}
+function znRenderCharts(rows){
+  znDestroyCharts();
+  if(typeof Chart==="undefined")return;
+  // State chart
+  const states={}; rows.forEach(r=>{const k=znField(r,"Состояние заказ-наряда")||"Не указано";states[k]=(states[k]||0)+1;});
+  const st=Object.entries(states).sort((a,b)=>b[1]-a[1]).slice(0,12);
+  znStateChart=new Chart(document.getElementById("znStateChart"),{type:"bar",data:{labels:st.map(x=>x[0]),datasets:[{label:"ЗН",data:st.map(x=>x[1]),borderWidth:1}]},options:{...znChartBaseOptions(),indexAxis:"y",plugins:{legend:{display:false}}}});
+
+  // Monthly count
+  const months={}; rows.forEach(r=>{const m=znMonth(znField(r,"Дата"));if(m)months[m]=(months[m]||0)+1;});
+  const ms=Object.keys(months).sort();
+  znMonthlyChart=new Chart(document.getElementById("znMonthlyChart"),{type:"line",data:{labels:ms.map(m=>{const [y,mo]=m.split("-");return `${mo}.${y}`}),datasets:[{label:"Количество ЗН",data:ms.map(m=>months[m]),tension:.25,fill:false}]},options:znChartBaseOptions()});
+
+  // Parts vs works
+  const parts=rows.reduce((s,r)=>s+znNum(znField(r,"Сумма деталей")),0), works=rows.reduce((s,r)=>s+znNum(znField(r,"Сумма работ")),0);
+  znPartsWorksChart=new Chart(document.getElementById("znPartsWorksChart"),{type:"doughnut",data:{labels:["Детали","Работы"],datasets:[{data:[parts,works],borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"bottom",labels:{color:"#eef1f8"}},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${znMoney(ctx.raw)}`}}}}});
+
+  // Shops by sum
+  const shops={}; rows.forEach(r=>{const k=znField(r,"Цех")||"Не указан";shops[k]=(shops[k]||0)+znNum(znField(r,"Сумма документа"));});
+  const sh=Object.entries(shops).sort((a,b)=>b[1]-a[1]).slice(0,12);
+  znShopChart=new Chart(document.getElementById("znShopChart"),{type:"bar",data:{labels:sh.map(x=>x[0]),datasets:[{label:"Сумма",data:sh.map(x=>x[1]),borderWidth:1}]},options:{...znChartBaseOptions(),plugins:{legend:{display:false}},scales:{x:{ticks:{color:"#8b93a8",maxRotation:45,minRotation:0},grid:{color:"rgba(139,147,168,.10)"}},y:{ticks:{color:"#8b93a8",callback:v=>Number(v).toLocaleString("ru-RU")},grid:{color:"rgba(139,147,168,.10)"}}}}});
+}
+function znRankHtml(rows,group){
+  const map={}; rows.forEach(r=>{const k=znField(r,group)||"Не указан";if(!map[k])map[k]={count:0,sum:0};map[k].count++;map[k].sum+=znNum(znField(r,"Сумма документа"));});
+  const arr=Object.entries(map).sort((a,b)=>b[1].sum-a[1].sum).slice(0,10);
+  if(!arr.length)return `<div class="zn-muted">Нет данных</div>`;
+  return arr.map(([name,v],i)=>`<div class="zn-rank-row"><span class="zn-rank-num">${i+1}</span><span class="zn-rank-name" title="${znEscape(name)}">${znEscape(name)}<small class="zn-muted"> · ${znCount(v.count)} ЗН</small></span><span class="zn-rank-value">${znMoney(v.sum)}</span></div>`).join("");
+}
 function renderZNCards(rows){
-  const total=rows.reduce((s,r)=>s+znNum(znField(r,"Сумма документа")),0);
-  const parts=rows.reduce((s,r)=>s+znNum(znField(r,"Сумма деталей")),0);
-  const works=rows.reduce((s,r)=>s+znNum(znField(r,"Сумма работ")),0);
-  const vins=new Set(rows.map(r=>znField(r,"VIN")).filter(Boolean)).size;
+  const total=rows.reduce((s,r)=>s+znNum(znField(r,"Сумма документа")),0),parts=rows.reduce((s,r)=>s+znNum(znField(r,"Сумма деталей")),0),works=rows.reduce((s,r)=>s+znNum(znField(r,"Сумма работ")),0);
+  const vins=new Set(rows.map(r=>znField(r,"VIN")).filter(Boolean)).size,contr=new Set(rows.map(r=>znField(r,"Контрагент")).filter(Boolean)).size;
+  const avg=rows.length?total/rows.length:0;
   document.getElementById("znCards").innerHTML=[
-    ["Заказ-нарядов",rows.length],
+    ["Заказ-нарядов",znCount(rows.length)],
     ["Сумма документов",znMoney(total)],
     ["Сумма деталей",znMoney(parts)],
     ["Сумма работ",znMoney(works)],
-    ["VIN",vins]
-  ].map(x=>`<div class="card"><div class="label">${x[0]}</div><div class="value">${typeof x[1]==="number"?fmt(x[1]):x[1]}</div></div>`).join("");
+    ["Контрагентов",znCount(contr)],
+    ["VIN",znCount(vins)],
+    ["Средний ЗН",znMoney(avg)]
+  ].map(x=>`<div class="card"><div class="label">${x[0]}</div><div class="value">${x[1]}</div></div>`).join("");
 }
-function renderZNTable(rows){
-  const head=document.getElementById("znHead"), body=document.getElementById("znBody");
+function znRenderTable(rows){
+  const head=document.getElementById("znHead"),body=document.getElementById("znBody");
   head.innerHTML=`<tr>${znHeaders.map(h=>`<th>${znEscape(h)}</th>`).join("")}</tr>`;
-  if(!rows.length){body.innerHTML=`<tr><td colspan="${znHeaders.length}" class="zn-empty">Нет данных</td></tr>`;return;}
-  body.innerHTML=rows.map(r=>`<tr>${znHeaders.map(h=>{
-    const v=znField(r,h);
-    if(h==="Сумма документа"||h==="Сумма деталей"||h==="Сумма работ") return `<td class="zn-num">${znMoney(znNum(v))}</td>`;
-    if(h==="Состояние заказ-наряда" && v) return `<td><span class="zn-status">${znEscape(v)}</span></td>`;
-    return `<td title="${znEscape(v)}">${znEscape(v)}</td>`;
-  }).join("")}</tr>`).join("");
+  if(!rows.length){body.innerHTML=`<tr><td colspan="${znHeaders.length}" class="zn-empty">Нет данных по выбранным фильтрам</td></tr>`;return;}
+  body.innerHTML=rows.map((r,ri)=>`<tr class="zn-clickable" data-zn-row="${ri}">${znHeaders.map(h=>{const v=znField(r,h);if(["Сумма документа","Сумма деталей","Сумма работ"].includes(h))return `<td class="zn-num">${znMoney(znNum(v))}</td>`;if(h==="Состояние заказ-наряда"&&v)return `<td><span class="zn-status">${znEscape(v)}</span></td>`;return `<td title="${znEscape(v)}">${znEscape(v)}</td>`;}).join("")}</tr>`).join("");
+  body.querySelectorAll("tr[data-zn-row]").forEach(tr=>tr.onclick=()=>{const i=Number(tr.dataset.znRow);znOpenModal(rows[i]);});
 }
+function znOpenModal(row){
+  const num=znField(row,"Номер")||"Без номера";
+  document.getElementById("znModalTitle").textContent=`Заказ-наряд № ${num}`;
+  document.getElementById("znModalSub").textContent=[znField(row,"Дата"),znField(row,"Контрагент"),znField(row,"VIN")].filter(Boolean).join(" · ");
+  document.getElementById("znModalBody").innerHTML=znHeaders.map(h=>{let v=znField(row,h);if(["Сумма документа","Сумма деталей","Сумма работ"].includes(h)&&v)v=znMoney(znNum(v));return `<div class="zn-detail-item"><div class="k">${znEscape(h)}</div><div class="v">${znEscape(v||"—")}</div></div>`;}).join("");
+  document.getElementById("znModal").classList.remove("hidden");
+}
+function znCloseModal(){document.getElementById("znModal").classList.add("hidden");}
 function renderZN(){
   const rows=znFiltered();
-  renderZNCards(rows); renderZNTable(rows);
-  document.getElementById("znResultInfo").textContent=`Найдено: ${fmt(rows.length)} из ${fmt(znRows.length)}`;
+  renderZNCards(rows);znRenderCharts(rows);
+  document.getElementById("znTopCounterparties").innerHTML=znRankHtml(rows,"Контрагент");
+  document.getElementById("znTopMasters").innerHTML=znRankHtml(rows,"Мастер");
+  znRenderTable(rows);
+  document.getElementById("znResultInfo").textContent=`Найдено: ${znCount(rows.length)} из ${znCount(znRows.length)}`;
 }
 async function fetchZN(){
   document.getElementById("znErr").textContent="Загрузка…";
-  // Public test sheet: no OAuth token is required for this endpoint.
   const url=`https://docs.google.com/spreadsheets/d/${ZN_SPREADSHEET_ID}/gviz/tq?tqx=out:json&gid=${ZN_GID}`;
   const res=await fetch(url,{cache:"no-store"});
-  if(!res.ok) throw new Error(`Google Sheets: ${res.status}`);
-  const text=await res.text();
-  const start=text.indexOf("{"); const end=text.lastIndexOf("}");
-  if(start<0||end<0) throw new Error("Google Sheets не вернул данные. Проверьте общий доступ к таблице.");
+  if(!res.ok)throw new Error(`Google Sheets: ${res.status}`);
+  const text=await res.text(),start=text.indexOf("{"),end=text.lastIndexOf("}");
+  if(start<0||end<0)throw new Error("Google Sheets не вернул данные. Проверьте общий доступ к таблице.");
   const data=JSON.parse(text.slice(start,end+1));
   const cols=(data.table?.cols||[]).map(c=>String(c.label||c.id||""));
-  const rows=(data.table?.rows||[]).map(row=>(row.c||[]).map(c=>c?.f ?? c?.v ?? ""));
-  znHeaders=cols.length?cols:ZN_HEADERS_EXPECTED;
-  // Google GViz may return empty labels; fall back to the exact source structure.
-  if(znHeaders.length<17 || znHeaders.every(x=>!x)) znHeaders=ZN_HEADERS_EXPECTED.slice();
-  znRows=rows.filter(r=>r.some(v=>String(v??"").trim()!==""));
-  document.getElementById("znDateLabel").textContent=`Источник: Google Sheets → ЗНАРЯД · обновлено: ${new Date().toLocaleString("ru-RU")} · строк: ${fmt(znRows.length)}`;
+  const rows=(data.table?.rows||[]).map(row=>(row.c||[]).map(c=>c?.f??c?.v??""));
+  znHeaders=cols.length?cols:ZN_HEADERS_EXPECTED.slice();
+  if(znHeaders.length<17||znHeaders.every(x=>!x))znHeaders=ZN_HEADERS_EXPECTED.slice();
+  // GViz может отдавать пустые ячейки как пропущенные элементы — выравниваем длину.
+  znRows=rows.filter(r=>r.some(v=>String(v??"").trim()!=="")).map(r=>{const a=r.slice();while(a.length<znHeaders.length)a.push("");return a.slice(0,znHeaders.length);});
+  document.getElementById("znDateLabel").textContent=`Источник: Google Sheets → ЗНАРЯД · обновлено: ${new Date().toLocaleString("ru-RU")} · строк: ${znCount(znRows.length)}`;
   document.getElementById("znErr").textContent="";
-  [
-    ["znOrg","Организация"],["znState","Состояние заказ-наряда"],["znMaster","Мастер"],["znShop","Цех"]
-  ].forEach(([id,name])=>znBuildOptions(id,name));
+  [["znOrg","Организация"],["znState","Состояние заказ-наряда"],["znMaster","Мастер"],["znShop","Цех"]].forEach(([id,name])=>znBuildOptions(id,name));
   renderZN();
 }
 function openZNPage(){
   closeNomenclaturePage();
   document.getElementById("znPage").classList.remove("hidden");
-  if(!znRows.length) fetchZN().catch(e=>document.getElementById("znErr").textContent="Ошибка загрузки ЗН: "+e.message);
-  else renderZN();
+  if(!znRows.length)fetchZN().catch(e=>document.getElementById("znErr").textContent="Ошибка загрузки ЗН: "+e.message);else renderZN();
 }
-function closeZNPage(){ document.getElementById("znPage").classList.add("hidden"); }
+function closeZNPage(){document.getElementById("znPage").classList.add("hidden");}
 
 document.addEventListener("DOMContentLoaded",()=>{
-  document.getElementById("znBackBtn").onclick=()=>closeZNPage();
+  document.getElementById("znBackBtn").onclick=()=>{closeZNPage();znCloseModal();};
   document.getElementById("znRefreshBtn").onclick=()=>fetchZN().catch(e=>document.getElementById("znErr").textContent="Ошибка загрузки ЗН: "+e.message);
   ["znSearch","znFrom","znTo"].forEach(id=>document.getElementById(id).oninput=renderZN);
   ["znOrg","znState","znMaster","znShop"].forEach(id=>document.getElementById(id).onchange=renderZN);
-  document.getElementById("znClear").onclick=()=>{
-    document.getElementById("znSearch").value="";
-    document.getElementById("znFrom").value="";
-    document.getElementById("znTo").value="";
-    ["znOrg","znState","znMaster","znShop"].forEach(id=>document.getElementById(id).value="");
-    renderZN();
-  };
+  document.getElementById("znClear").onclick=()=>{document.getElementById("znSearch").value="";document.getElementById("znFrom").value="";document.getElementById("znTo").value="";["znOrg","znState","znMaster","znShop"].forEach(id=>document.getElementById(id).value="");renderZN();};
+  document.getElementById("znModalClose").onclick=znCloseModal;
+  document.getElementById("znModal").addEventListener("click",e=>{if(e.target.id==="znModal")znCloseModal();});
+  document.addEventListener("keydown",e=>{if(e.key==="Escape")znCloseModal();});
+});
+// Надёжный обработчик клика по разделу ЗН.
+document.addEventListener("click",e=>{
+  const link=e.target.closest('a[data-zn="1"]');if(!link)return;e.preventDefault();
+  const page=document.getElementById("znPage");if(!page)return;page.classList.remove("hidden");page.style.display="block";
+  if(!znRows.length)fetchZN().catch(err=>{const box=document.getElementById("znErr");if(box)box.textContent="Ошибка загрузки ЗН: "+err.message;});else renderZN();
 });
 </script>
 
