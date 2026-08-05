@@ -529,7 +529,8 @@ const LOG_SHEET = "logs";
 const SCOPES = "https://www.googleapis.com/auth/spreadsheets.readonly";
 // Тестовый публичный Google Sheets для раздела «Заказ-наряды».
 const ZN_SPREADSHEET_ID = "1xCmvibrmyf9h0xHoPEQiZ6SDchoXtPeFXD3ZV_BDX1M";
-const ZN_GID = "583249461";
+const ZN_GID = "600028169";
+const ZN_SHEET_NAME = "ЗНАРЯД";
 // =========================================
 
 let accessToken = null;
@@ -592,18 +593,13 @@ function buildSidebar(){
       }
       if (a.dataset.zn === "1") {
         try {
-          const page = document.getElementById("znPage");
-          if (!page) throw new Error("Элемент znPage не найден");
-          page.classList.remove("hidden");
-          page.style.display = "block";
-          closeNomenclaturePage();
-          if (!znRows.length) {
-            fetchZN().catch(err => {
-              const box = document.getElementById("znErr");
-              if (box) box.textContent = "Ошибка загрузки ЗН: " + err.message;
-            });
+          if (typeof openZNPage === "function") {
+            openZNPage();
           } else {
-            renderZN();
+            const page = document.getElementById("znPage");
+            if (!page) throw new Error("Элемент znPage не найден");
+            page.classList.remove("hidden");
+            page.style.display = "block";
           }
         } catch (err) {
           alert("Не удалось открыть раздел «Заказ-наряды»: " + err.message);
@@ -1623,7 +1619,7 @@ async function fetchZN(){
   const text=await res.text();
   const start=text.indexOf("{"),end=text.lastIndexOf("}");
   if(start<0||end<0)
-    throw new Error("Google Sheets не вернул данные. Проверьте общий доступ к таблице.");
+    throw new Error(`Google Sheets не вернул данные. Проверьте, что лист «${ZN_SHEET_NAME}» опубликован/доступен по ссылке, и что используется GID ${ZN_GID}.`);
 
   const data=JSON.parse(text.slice(start,end+1));
   const cols=(data.table?.cols||[]).map(c=>String(c.label||c.id||""));
@@ -1662,12 +1658,18 @@ async function fetchZN(){
 
 function openZNPage(){
   closeNomenclaturePage();
-  document.getElementById("znPage").classList.remove("hidden");
+  const page=document.getElementById("znPage");
+  if(!page) throw new Error("Элемент znPage не найден");
+  page.classList.remove("hidden");
+  page.style.display="block";
   if(!znRows.length)
     fetchZN().catch(e=>document.getElementById("znErr").textContent="Ошибка загрузки ЗН: "+e.message);
   else renderZN();
 }
-function closeZNPage(){document.getElementById("znPage").classList.add("hidden");}
+function closeZNPage(){
+  const page=document.getElementById("znPage");
+  if(page){page.classList.add("hidden");page.style.display="none";}
+}
 
 document.addEventListener("DOMContentLoaded",()=>{
   document.getElementById("znBackBtn").onclick=()=>{
