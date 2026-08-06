@@ -926,6 +926,7 @@ function buildSidebar(){
       selectedCompany = a.dataset.company;
       buildSidebar();
       loadAll();
+      startZNChangesWatcher();
     };
   });
 }
@@ -2187,7 +2188,7 @@ function openZNPage(){
     fetchZN().catch(e=>document.getElementById("znErr").textContent="Ошибка загрузки ЗН: "+e.message);
   else renderZN();
 }
-function closeZNPage(){ stopZNChangesWatcher(); document.getElementById("znPage").classList.add("hidden"); }
+function closeZNPage(){ document.getElementById("znPage").classList.add("hidden"); }
 
 document.addEventListener("DOMContentLoaded",()=>{
   document.getElementById("znBackBtn").onclick=()=>{
@@ -2469,78 +2470,48 @@ let _znChangesUnseen = [];
 async function fetchChanges() {
   try {
     let rows = null;
-
-    // Читаем ИЗМЕНЕНИЯ через авторизованный Google Sheets API.
-    // Это основной путь и он не требует публикации таблицы в интернете.
     if (accessToken) {
-      const range = encodeURIComponent("'ИЗМЕНЕНИЯ'!A:G");
-      const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${ZN_SPREADSHEET_ID}/values/${range}?majorDimension=ROWS&valueRenderOption=FORMATTED_VALUE`;
-      const apiRes = await fetch(apiUrl, {
-        method: 'GET',
-        cache: 'no-store',
-        headers: { Authorization: `Bearer ${accessToken}` }
-      });
-      if (apiRes.ok) {
-        const data = await apiRes.json();
-        rows = Array.isArray(data.values) ? data.values : [];
-      } else {
-        console.warn('fetchChanges: Sheets API HTTP', apiRes.status);
-      }
+      const range=encodeURIComponent("'ИЗМЕНЕНИЯ'!A:G");
+      const url=`https://sheets.googleapis.com/v4/spreadsheets/${ZN_SPREADSHEET_ID}/values/${range}?majorDimension=ROWS&valueRenderOption=FORMATTED_VALUE&_=${Date.now()}`;
+      const res=await fetch(url,{cache:'no-store',headers:{Authorization:`Bearer ${accessToken}`}});
+      if(res.ok){ const data=await res.json(); rows=Array.isArray(data.values)?data.values:[]; }
+      else console.warn('ИЗМЕНЕНИЯ API HTTP',res.status);
     }
-
-    // Резерв для публичной таблицы.
-    if (!rows) {
-      const sheetParam = encodeURIComponent(CHANGES_SHEET_NAME);
-      const url = `https://docs.google.com/spreadsheets/d/${ZN_SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${sheetParam}&t=${Date.now()}`;
-      const res = await fetch(url, {method:'GET',cache:'no-store',mode:'cors',credentials:'omit'});
-      if (!res.ok) return;
-      const text = await res.text();
-      const a = text.indexOf('{'), b = text.lastIndexOf('}');
-      if (a < 0 || b < 0) return;
-      const data = JSON.parse(text.slice(a,b+1));
-      rows = (data.table?.rows || []).map(r => (r.c || []).map(c => c?.f ?? c?.v ?? ''));
+    if(!rows){
+      const url=`https://docs.google.com/spreadsheets/d/${ZN_SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(CHANGES_SHEET_NAME)}&t=${Date.now()}`;
+      const res=await fetch(url,{cache:'no-store',mode:'cors',credentials:'omit'});
+      if(!res.ok) throw new Error('GViz HTTP '+res.status);
+      const text=await res.text(); const a=text.indexOf('{'),b=text.lastIndexOf('}');
+      if(a<0||b<0) throw new Error('GViz JSON not found');
+      const data=JSON.parse(text.slice(a,b+1));
+      rows=[(data.table?.cols||[]).map(c=>String(c.label||c.id||'')),...(data.table?.rows||[]).map(r=>(r.c||[]).map(c=>c?.f??c?.v??''))];
     }
-
-    if (!rows.length) {
-      _znChangesAll=[]; _znChangesUnseen=[];
-      const banner=document.getElementById('znAlertBanner');
-      if(banner) banner.style.display='none';
-      return;
-    }
-
-    if (String(rows[0]?.[0] || '').includes('Дата') || String(rows[0]?.[3] || '').includes('Тип')) rows=rows.slice(1);
-
+    if(!rows.length) return;
+    if(String(rows[0]?.[0]||'').includes('Дата')||String(rows[0]?.[3]||'').includes('Тип')) rows=rows.slice(1);
+    const normal=[['Заявка','Начать работу'],['Заявка','В работе'],['Начать работу','В работе'],['В работе','Ожидание ЗЧ'],['Ожидание ЗЧ','Выполнено'],['Выполнено','Закрыт']];
     const filtered=rows.filter(r=>{
-      const type=String(r[3]||'').trim();
-      const field=String(r[4]||'').trim();
-      const oldV=String(r[5]||'').trim();
-      const newV=String(r[6]||'').trim();
+      const type=String(r[3]||'').trim().toUpperCase(); const field=String(r[4]||'').trim(); const oldV=String(r[5]||'').trim(); const newV=String(r[6]||'').trim();
       if(!type) return false;
-      if(type.includes('УДАЛЁН')) return true;
-      if(!type.includes('ИЗМЕНЕНО')) return false;
-
-      if(field==='Состояние заказ-наряда'){
-        const normal=[
-          ['Заявка','В работе'],['Заявка','Начать работу'],['Начать работу','В работе'],
-          ['В работе','Ожидание ЗЧ'],['Ожидание ЗЧ','Выполнено'],['Выполнено','Закрыт']
-        ];
-        return !normal.some(([a,b])=>oldV===a && newV===b);
-      }
+      if(type.includes('УДАЛ')) return true;
+      if(!type.includes('ИЗМЕН')) return false;
+      if(field==='Состояние заказ-наряда') return !normal.some(([a,b])=>oldV===a&&newV===b);
       return true;
     });
-
-    _znChangesAll=filtered.map((r,i)=>({
-      date:String(r[0]||''), zn:String(r[2]||''), type:String(r[3]||''),
-      field:String(r[4]||'—'), old:String(r[5]||'—'), newv:String(r[6]||'—'), file:String(r[1]||''),
-      key:`${r[0]||''}_${r[2]||''}_${r[3]||''}_${r[4]||''}_${r[5]||''}_${r[6]||''}_${i}`
-    }));
-
-    const seen=JSON.parse(localStorage.getItem('zn_seen_v2')||'[]');
+    _znChangesAll=filtered.map(r=>({date:String(r[0]||''),zn:String(r[2]||''),type:String(r[3]||''),field:String(r[4]||'—'),old:String(r[5]||'—'),newv:String(r[6]||'—'),file:String(r[1]||''),key:[r[0],r[1],r[2],r[3],r[4],r[5],r[6]].map(v=>String(v||'')).join('|')}));
+    const seen=JSON.parse(localStorage.getItem('zn_seen_v3')||'[]');
     _znChangesUnseen=_znChangesAll.filter(r=>!seen.includes(r.key));
-    if(_znChangesUnseen.length) _showAlertBanner();
-    else { const banner=document.getElementById('znAlertBanner'); if(banner) banner.style.display='none'; }
-  } catch(err) { console.error('fetchChanges error:',err); }
+    if(_znChangesUnseen.length){ _showAlertBanner(); showZNGlobalToast(); }
+    else { const b=document.getElementById('znAlertBanner'); if(b)b.style.display='none'; }
+  }catch(e){ console.error('fetchChanges error',e); }
 }
+function showZNGlobalToast(){
+  const el=document.getElementById('znGlobalToast'); if(!el)return;
+  const c=_znChangesUnseen.filter(r=>r.type.toUpperCase().includes('ИЗМЕН')).length;
+  const d=_znChangesUnseen.filter(r=>r.type.toUpperCase().includes('УДАЛ')).length;
+  const p=[]; if(c)p.push('✏️ '+c+' изменено'); if(d)p.push('🗑 '+d+' удалено');
+  document.getElementById('znGlobalToastText').textContent=p.join(' · ')+' — нажмите для просмотра'; el.style.display='block';
+}
+function hideZNGlobalToast(){const el=document.getElementById('znGlobalToast');if(el)el.style.display='none';}
 
 function _showAlertBanner() {
   const banner = document.getElementById("znAlertBanner");
@@ -2588,11 +2559,12 @@ function closeChangesModal() {
 }
 
 function clearChangesFlag() {
-  const seen = JSON.parse(localStorage.getItem("zn_seen_v2") || "[]");
+  const seen = JSON.parse(localStorage.getItem("zn_seen_v3") || "[]");
   _znChangesUnseen.forEach(r => { if (!seen.includes(r.key)) seen.push(r.key); });
-  localStorage.setItem("zn_seen_v2", JSON.stringify(seen));
+  localStorage.setItem("zn_seen_v3", JSON.stringify(seen));
   _znChangesUnseen = [];
   document.getElementById("znAlertBanner").style.display = "none";
+  hideZNGlobalToast();
   closeChangesModal();
 }
 
@@ -2601,6 +2573,10 @@ document.addEventListener("click", e => {
   if (e.target.id === "znChangesModal") closeChangesModal();
 });
 
+document.addEventListener('DOMContentLoaded',()=>{const t=document.getElementById('znGlobalToast');if(t)t.onclick=e=>{if(e.target.id!=='znGlobalToastClose')openChangesModal();};const c=document.getElementById('znGlobalToastClose');if(c)c.onclick=e=>{e.stopPropagation();hideZNGlobalToast();};});
 </script>
+<!-- ГЛОБАЛЬНОЕ АВТО-УВЕДОМЛЕНИЕ ЗН -->
+<div id="znGlobalToast" style="display:none;position:fixed;top:18px;right:18px;z-index:20000;width:min(430px,calc(100vw - 36px));background:linear-gradient(135deg,#3a0505,#671111);border:1px solid #ff4d4d;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.45);padding:16px 18px;cursor:pointer;color:#fff;font-family:inherit">
+<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><div id="znGlobalToastTitle" style="font-weight:800;font-size:15px">🔴 Изменения в заказ-нарядах</div><div id="znGlobalToastText" style="font-size:12px;opacity:.85;margin-top:6px"></div></div><button id="znGlobalToastClose" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button></div></div>
 </body>
 </html>
