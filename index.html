@@ -2471,25 +2471,27 @@ async function fetchChanges() {
     if (s < 0) return;
 
     const data = JSON.parse(text.slice(s, e + 1));
-    const cols = (data.table?.cols || []).map(c => String(c.label || c.id || ""));
-    const rows = (data.table?.rows || []).map(r => (r.c || []).map(c => c?.f ?? c?.v ?? ""));
+    // Колонка рақамлари (Sheets тартибидан):
+    // A=0:ДатаВремя, B=1:Файл, C=2:№ЗН, D=3:Тип, E=4:Поле, F=5:Старое, G=6:Новое
+    const allRows = (data.table?.rows || []).map(r => (r.c || []).map(c => c?.f ?? c?.v ?? ""));
+    
+    // 1-қатор сарлавҳами ёки маълумотми — текшириш
+    let rows = allRows;
+    if (allRows.length > 0) {
+      const first = allRows[0];
+      // Агар 1-қатор сарлавҳа бўлса (Дата/Время ёки бўш) — ўтказиб юбор
+      const isHeader = String(first[0]||"").includes("Дата") || String(first[3]||"").includes("Тип");
+      if (isHeader) rows = allRows.slice(1);
+    }
 
-    // Колонкаларни ҳар хил вариантда қидириш
-    const findCol = (names) => {
-      for (const n of names) {
-        const i = cols.findIndex(c => c.trim() === n.trim());
-        if (i !== -1) return i;
-      }
-      return -1;
-    };
-    const typeIdx  = findCol(["Тип"]);
-    const dateIdx  = findCol(["Дата/Время","ДатаВремя","Дата Время","Сана/Вақт"]);
-    const znIdx    = findCol(["№ ЗН","ЗН №","Номер ЗН","№ЗН"]);
-    const fieldIdx = findCol(["Поле","Майдон"]);
-    const oldIdx   = findCol(["Старое значение","Эски қиймат"]);
-    const newIdx   = findCol(["Новое значение","Янги қиймат"]);
-    const fileIdx  = findCol(["Файл"]);
-    console.log("Топилган колонкалар:", {typeIdx,dateIdx,znIdx,fieldIdx,oldIdx,newIdx,fileIdx});
+    const dateIdx  = 0;  // A: Дата/Время
+    const fileIdx  = 1;  // B: Файл
+    const znIdx    = 2;  // C: № ЗН
+    const typeIdx  = 3;  // D: Тип
+    const fieldIdx = 4;  // E: Поле
+    const oldIdx   = 5;  // F: Старое значение
+    const newIdx   = 6;  // G: Новое значение
+    console.log("Жами қаторлар:", rows.length, "Биринчи:", rows[0]);
 
     // Нормал статус ўзгаришлари (хабар берма)
     const NORMAL_FLOW = [
