@@ -2169,8 +2169,8 @@ async function fetchZN(){
 
 function openZNPage(){
   closeNomenclaturePage();
-  fetchChanges();
   document.getElementById("znPage").classList.remove("hidden");
+  startZNChangesWatcher();
   if(!znRows.length)
     fetchZN().catch(e=>document.getElementById("znErr").textContent="Ошибка загрузки ЗН: "+e.message);
   else renderZN();
@@ -2456,94 +2456,96 @@ let _znChangesUnseen = [];
 
 async function fetchChanges() {
   try {
-    // Токенсиз — публик gviz орқали ўқиш
-    const sheetParam = encodeURIComponent(CHANGES_SHEET_NAME);
-    const url = `https://docs.google.com/spreadsheets/d/${ZN_SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${sheetParam}&t=${Date.now()}`;
-    const res = await fetch(url, {
-      method: "GET",
-      cache: "no-store",
-      mode: "cors",
-      credentials: "omit"
-    });
-    if (!res.ok) { console.warn("fetchChanges: HTTP", res.status); return; }
-    const text = await res.text();
-    const s = text.indexOf("{"), e = text.lastIndexOf("}");
-    if (s < 0) return;
+    let values = null;
 
-    const data = JSON.parse(text.slice(s, e + 1));
-    // Колонка рақамлари (Sheets тартибидан):
-    // A=0:ДатаВремя, B=1:Файл, C=2:№ЗН, D=3:Тип, E=4:Поле, F=5:Старое, G=6:Новое
-    const allRows = (data.table?.rows || []).map(r => (r.c || []).map(c => c?.f ?? c?.v ?? ""));
-    
-    // 1-қатор сарлавҳами ёки маълумотми — текшириш
-    let rows = allRows;
-    if (allRows.length > 0) {
-      const first = allRows[0];
-      // Агар 1-қатор сарлавҳа бўлса (Дата/Время ёки бўш) — ўтказиб юбор
-      const isHeader = String(first[0]||"").includes("Дата") || String(first[3]||"").includes("Тип");
-      if (isHeader) rows = allRows.slice(1);
+    // 1) Авторизованный Google Sheets API — основной способ
+    if (accessToken) {
+      const range = encodeURIComponent("'ИЗМЕНЕНИЯ'!A:G");
+      const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${ZN_SPREADSHEET_ID}/values/${range}?valueRenderOption=FORMATTED_VALUE&majorDimension=ROWS`;
+      const apiRes = await fetch(apiUrl, {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      if (apiRes.ok) {
+        const data = await apiRes.json();
+        values = Array.isArray(data.values) ? data.values : [];
+      }
     }
 
-    const dateIdx  = 0;  // A: Дата/Время
-    const fileIdx  = 1;  // B: Файл
-    const znIdx    = 2;  // C: № ЗН
-    const typeIdx  = 3;  // D: Тип
-    const fieldIdx = 4;  // E: Поле
-    const oldIdx   = 5;  // F: Старое значение
-    const newIdx   = 6;  // G: Новое значение
-    console.log("Жами қаторлар:", rows.length, "Биринчи:", rows[0]);
+    // 2) GViz fallback
+    if (!values) {
+      const sheetParam = encodeURIComponent(CHANGES_SHEET_NAME);
+      const url = `https://docs.google.com/spreadsheets/d/${ZN_SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${sheetParam}&t=${Date.now()}`;
+      const res = await fetch(url, { method: "GET", cache: "no-store", mode: "cors", credentials: "omit" });
+      if (!res.ok) return;
+      const text = await res.text();
+      const a = text.indexOf("{"), b = text.lastIndexOf("}");
+      if (a < 0 || b < 0) return;
+      const data = JSON.parse(text.slice(a, b + 1));
+      const headers = (data.table?.cols || []).map(c => String(c.label || c.id || ""));
+      const rows = (data.table?.rows || []).map(r => (r.c || []).map(c => c?.f ?? c?.v ?? ""));
+      values = [headers, ...rows];
+    }
 
-    // Нормал статус ўзгаришлари (хабар берма)
-    const NORMAL_FLOW = [
-      "Заявка", "Начать работу", "В работе", "Ожидание ЗЧ", "Выполнено", "Закрыт"
-    ];
-    // Фильтр: УДАЛЁН — ҳамиша хабар бер
-    // ИЗМЕНЕНО — фақат шубҳали ўзгаришларни кўрсат
+    if (!values || !values.length) {
+      _znChangesAll = [];
+      _znChangesUnseen = [];
+      const banner = document.getElementById("znAlertBanner");
+      if (banner) banner.style.display = "none";
+      return;
+    }
+
+    let rows = values.slice(1).filter(r => r.some(v => String(v ?? "").trim() !== ""));
+
+    const dateIdx = 0, fileIdx = 1, znIdx = 2, typeIdx = 3, fieldIdx = 4, oldIdx = 5, newIdx = 6;
+
     const filtered = rows.filter(r => {
-      const t    = String(r[typeIdx]  || "");
-      const fld  = String(r[fieldIdx] || "");
-      const ov   = String(r[oldIdx]   || "").trim();
-      const nv   = String(r[newIdx]   || "").trim();
+      const type = String(r[typeIdx] || "").trim();
+      const field = String(r[fieldIdx] || "").trim();
+      const oldV = String(r[oldIdx] || "").trim();
+      const newV = String(r[newIdx] || "").trim();
 
-      if (t.includes("УДАЛЁН")) return true;
+      if (type.includes("УДАЛЁН")) return true;
 
-      if (t.includes("ИЗМЕНЕНО")) {
-        // Состояние ўзгарса — нормал оқимини текшир
-        if (fld === "Состояние заказ-наряда") {
-          // Орқага кетиш ёки "Закрыт/Выполнено" дан бошқасига ўтиш — шубҳали
-          const closedStates = ["Закрыт", "Выполнено", "Аннулирован"];
-          if (closedStates.includes(ov) && ov !== nv) return true; // Ёпилган → бошқа ⚠️
-          return false; // Нормал оқим — хабар берма
+      if (type.includes("ИЗМЕНЕНО")) {
+        if (field === "Состояние заказ-наряда") {
+          const suspiciousFrom = ["Закрыт", "Выполнено", "Аннулирован"];
+          return suspiciousFrom.includes(oldV) && oldV !== newV;
         }
-        // Бошқа барча майдонлар — хабар бер
         return true;
       }
       return false;
     });
 
     _znChangesAll = filtered.map(r => ({
-      date:  r[dateIdx]  || "",
-      zn:    r[znIdx]    || "",
-      type:  r[typeIdx]  || "",
-      field: r[fieldIdx] || "—",
-      old:   r[oldIdx]   || "—",
-      newv:  r[newIdx]   || "—",
-      file:  r[fileIdx]  || "",
-      key:   `${r[dateIdx]}_${r[znIdx]}_${r[fieldIdx]}`
+      date: String(r[dateIdx] || ""),
+      zn: String(r[znIdx] || ""),
+      type: String(r[typeIdx] || ""),
+      field: String(r[fieldIdx] || "—"),
+      old: String(r[oldIdx] || "—"),
+      newv: String(r[newIdx] || "—"),
+      file: String(r[fileIdx] || ""),
+      key: [r[dateIdx], r[znIdx], r[fieldIdx], r[oldIdx], r[newIdx]].map(v => String(v ?? "")).join("_")
     }));
 
-    // Просмотренные из localStorage
     const seen = JSON.parse(localStorage.getItem("zn_seen_v2") || "[]");
     _znChangesUnseen = _znChangesAll.filter(r => !seen.includes(r.key));
 
-    if (_znChangesUnseen.length > 0) {
-      _showAlertBanner();
-    } else {
-      document.getElementById("znAlertBanner").style.display = "none";
+    if (_znChangesUnseen.length > 0) _showAlertBanner();
+    else {
+      const banner = document.getElementById("znAlertBanner");
+      if (banner) banner.style.display = "none";
     }
-  } catch(err) {
+  } catch (err) {
     console.warn("fetchChanges error:", err);
   }
+}
+
+let znChangesTimer = null;
+function startZNChangesWatcher() {
+  if (znChangesTimer) clearInterval(znChangesTimer);
+  fetchChanges();
+  znChangesTimer = setInterval(fetchChanges, 30000);
 }
 
 function _showAlertBanner() {
