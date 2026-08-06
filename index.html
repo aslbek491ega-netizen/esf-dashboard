@@ -2178,10 +2178,6 @@ function openZNPage(){
 function closeZNPage(){document.getElementById("znPage").classList.add("hidden");}
 
 document.addEventListener("DOMContentLoaded",()=>{
-  // Автоматическая проверка листа «ИЗМЕНЕНИЯ» каждые 30 секунд.
-  // Только чтение; остальные функции dashboard не затрагиваются.
-  startZNChangesAutoCheck();
-
   document.getElementById("znBackBtn").onclick=()=>{
     closeZNPage();znCloseModal();
   };
@@ -2459,8 +2455,6 @@ let _znChangesAll = [];
 let _znChangesUnseen = [];
 
 async function fetchChanges() {
-  if (_znChangesFetchInProgress) return;
-  _znChangesFetchInProgress = true;
   try {
     const url = `https://docs.google.com/spreadsheets/d/${ZN_SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(CHANGES_SHEET_NAME)}&cache=${Date.now()}`;
     const res = await fetch(url, {cache: "no-store"});
@@ -2473,13 +2467,22 @@ async function fetchChanges() {
     const cols = (data.table?.cols || []).map(c => String(c.label || c.id || ""));
     const rows = (data.table?.rows || []).map(r => (r.c || []).map(c => c?.f ?? c?.v ?? ""));
 
-    const typeIdx = cols.indexOf("Тип");
-    const dateIdx = cols.indexOf("Дата/Время");
-    const znIdx   = cols.indexOf("№ ЗН");
-    const fieldIdx= cols.indexOf("Поле");
-    const oldIdx  = cols.indexOf("Старое значение");
-    const newIdx  = cols.indexOf("Новое значение");
-    const fileIdx = cols.indexOf("Файл");
+    // Колонкаларни ҳар хил вариантда қидириш
+    const findCol = (names) => {
+      for (const n of names) {
+        const i = cols.findIndex(c => c.trim() === n.trim());
+        if (i !== -1) return i;
+      }
+      return -1;
+    };
+    const typeIdx  = findCol(["Тип"]);
+    const dateIdx  = findCol(["Дата/Время","ДатаВремя","Дата Время","Сана/Вақт"]);
+    const znIdx    = findCol(["№ ЗН","ЗН №","Номер ЗН","№ЗН"]);
+    const fieldIdx = findCol(["Поле","Майдон"]);
+    const oldIdx   = findCol(["Старое значение","Эски қиймат"]);
+    const newIdx   = findCol(["Новое значение","Янги қиймат"]);
+    const fileIdx  = findCol(["Файл"]);
+    console.log("Топилган колонкалар:", {typeIdx,dateIdx,znIdx,fieldIdx,oldIdx,newIdx,fileIdx});
 
     // Нормал статус ўзгаришлари (хабар берма)
     const NORMAL_FLOW = [
@@ -2517,8 +2520,7 @@ async function fetchChanges() {
       old:   r[oldIdx]   || "—",
       newv:  r[newIdx]   || "—",
       file:  r[fileIdx]  || "",
-      // Уникальный ключ конкретного изменения: дата + ЗН + тип + поле + старое + новое.
-      key:   `${r[dateIdx] || ""}_${r[znIdx] || ""}_${r[typeIdx] || ""}_${r[fieldIdx] || ""}_${r[oldIdx] || ""}_${r[newIdx] || ""}`
+      key:   `${r[dateIdx]}_${r[znIdx]}_${r[fieldIdx]}`
     }));
 
     // Просмотренные из localStorage
@@ -2532,20 +2534,7 @@ async function fetchChanges() {
     }
   } catch(err) {
     console.warn("fetchChanges error:", err);
-  } finally {
-    _znChangesFetchInProgress = false;
   }
-}
-
-let _znChangesPollTimer = null;
-let _znChangesFetchInProgress = false;
-
-function startZNChangesAutoCheck() {
-  if (_znChangesPollTimer) return;
-  fetchChanges();
-  _znChangesPollTimer = setInterval(() => {
-    if (!_znChangesFetchInProgress) fetchChanges();
-  }, 30000);
 }
 
 function _showAlertBanner() {
