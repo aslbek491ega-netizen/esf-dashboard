@@ -2178,6 +2178,10 @@ function openZNPage(){
 function closeZNPage(){document.getElementById("znPage").classList.add("hidden");}
 
 document.addEventListener("DOMContentLoaded",()=>{
+  // Автоматическая проверка листа «ИЗМЕНЕНИЯ» каждые 30 секунд.
+  // Только чтение; остальные функции dashboard не затрагиваются.
+  startZNChangesAutoCheck();
+
   document.getElementById("znBackBtn").onclick=()=>{
     closeZNPage();znCloseModal();
   };
@@ -2455,6 +2459,8 @@ let _znChangesAll = [];
 let _znChangesUnseen = [];
 
 async function fetchChanges() {
+  if (_znChangesFetchInProgress) return;
+  _znChangesFetchInProgress = true;
   try {
     const url = `https://docs.google.com/spreadsheets/d/${ZN_SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(CHANGES_SHEET_NAME)}&cache=${Date.now()}`;
     const res = await fetch(url, {cache: "no-store"});
@@ -2511,7 +2517,8 @@ async function fetchChanges() {
       old:   r[oldIdx]   || "—",
       newv:  r[newIdx]   || "—",
       file:  r[fileIdx]  || "",
-      key:   `${r[dateIdx]}_${r[znIdx]}_${r[fieldIdx]}`
+      // Уникальный ключ конкретного изменения: дата + ЗН + тип + поле + старое + новое.
+      key:   `${r[dateIdx] || ""}_${r[znIdx] || ""}_${r[typeIdx] || ""}_${r[fieldIdx] || ""}_${r[oldIdx] || ""}_${r[newIdx] || ""}`
     }));
 
     // Просмотренные из localStorage
@@ -2525,7 +2532,20 @@ async function fetchChanges() {
     }
   } catch(err) {
     console.warn("fetchChanges error:", err);
+  } finally {
+    _znChangesFetchInProgress = false;
   }
+}
+
+let _znChangesPollTimer = null;
+let _znChangesFetchInProgress = false;
+
+function startZNChangesAutoCheck() {
+  if (_znChangesPollTimer) return;
+  fetchChanges();
+  _znChangesPollTimer = setInterval(() => {
+    if (!_znChangesFetchInProgress) fetchChanges();
+  }, 30000);
 }
 
 function _showAlertBanner() {
