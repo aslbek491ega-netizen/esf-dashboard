@@ -907,9 +907,6 @@ function buildSidebar(){
           page.classList.remove("hidden");
           page.style.display = "block";
           closeNomenclaturePage();
-          // ВАЖНО: sidebar раньше обходил openZNPage(), поэтому watcher уведомлений не запускался.
-          startZNChangesWatcher();
-          requestZNNotifications();
           if (!znRows.length) {
             fetchZN().catch(err => {
               const box = document.getElementById("znErr");
@@ -2170,16 +2167,27 @@ async function fetchZN(){
   }
 }
 
+let znChangesTimer = null;
+
+function startZNChangesWatcher(){
+  if(znChangesTimer) clearInterval(znChangesTimer);
+  fetchChanges();
+  znChangesTimer=setInterval(fetchChanges,30000);
+}
+
+function stopZNChangesWatcher(){
+  if(znChangesTimer){ clearInterval(znChangesTimer); znChangesTimer=null; }
+}
+
 function openZNPage(){
   closeNomenclaturePage();
   document.getElementById("znPage").classList.remove("hidden");
   startZNChangesWatcher();
-  requestZNNotifications();
   if(!znRows.length)
     fetchZN().catch(e=>document.getElementById("znErr").textContent="Ошибка загрузки ЗН: "+e.message);
   else renderZN();
 }
-function closeZNPage(){document.getElementById("znPage").classList.add("hidden");}
+function closeZNPage(){ stopZNChangesWatcher(); document.getElementById("znPage").classList.add("hidden"); }
 
 document.addEventListener("DOMContentLoaded",()=>{
   document.getElementById("znBackBtn").onclick=()=>{
@@ -2457,140 +2465,142 @@ document.addEventListener("DOMContentLoaded",()=>{
 // ============================================
 let _znChangesAll = [];
 let _znChangesUnseen = [];
-let _znChangesLoadedOnce = false;
-let _znChangesKeys = new Set();
-let _znChangesTimer = null;
 
-function _znKey(r){
-  return [r[0],r[2],r[4],r[5],r[6]].map(v=>String(v ?? "").trim()).join("|");
-}
+async function fetchChanges() {
+  try {
+    let rows = null;
 
-function _znNormalizeRows(values){
-  if(!Array.isArray(values) || !values.length) return [];
-  const rows = values.slice(1).filter(r => Array.isArray(r) && r.some(v => String(v ?? "").trim() !== ""));
-  const dateIdx=0,fileIdx=1,znIdx=2,typeIdx=3,fieldIdx=4,oldIdx=5,newIdx=6;
-  return rows.filter(r=>{
-    const type=String(r[typeIdx]||"").trim();
-    const field=String(r[fieldIdx]||"").trim();
-    const oldV=String(r[oldIdx]||"").trim();
-    const newV=String(r[newIdx]||"").trim();
-    if(type.includes("УДАЛЁН") || type.includes("УДАЛЕН")) return true;
-    if(type.includes("ИЗМЕНЕНО")){
-      if(field === "Состояние заказ-наряда"){
-        const suspiciousFrom=["Закрыт","Выполнено","Аннулирован"];
-        return suspiciousFrom.includes(oldV) && oldV!==newV;
+    // Читаем ИЗМЕНЕНИЯ через авторизованный Google Sheets API.
+    // Это основной путь и он не требует публикации таблицы в интернете.
+    if (accessToken) {
+      const range = encodeURIComponent("'ИЗМЕНЕНИЯ'!A:G");
+      const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${ZN_SPREADSHEET_ID}/values/${range}?majorDimension=ROWS&valueRenderOption=FORMATTED_VALUE`;
+      const apiRes = await fetch(apiUrl, {
+        method: 'GET',
+        cache: 'no-store',
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      if (apiRes.ok) {
+        const data = await apiRes.json();
+        rows = Array.isArray(data.values) ? data.values : [];
+      } else {
+        console.warn('fetchChanges: Sheets API HTTP', apiRes.status);
+      }
+    }
+
+    // Резерв для публичной таблицы.
+    if (!rows) {
+      const sheetParam = encodeURIComponent(CHANGES_SHEET_NAME);
+      const url = `https://docs.google.com/spreadsheets/d/${ZN_SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${sheetParam}&t=${Date.now()}`;
+      const res = await fetch(url, {method:'GET',cache:'no-store',mode:'cors',credentials:'omit'});
+      if (!res.ok) return;
+      const text = await res.text();
+      const a = text.indexOf('{'), b = text.lastIndexOf('}');
+      if (a < 0 || b < 0) return;
+      const data = JSON.parse(text.slice(a,b+1));
+      rows = (data.table?.rows || []).map(r => (r.c || []).map(c => c?.f ?? c?.v ?? ''));
+    }
+
+    if (!rows.length) {
+      _znChangesAll=[]; _znChangesUnseen=[];
+      const banner=document.getElementById('znAlertBanner');
+      if(banner) banner.style.display='none';
+      return;
+    }
+
+    if (String(rows[0]?.[0] || '').includes('Дата') || String(rows[0]?.[3] || '').includes('Тип')) rows=rows.slice(1);
+
+    const filtered=rows.filter(r=>{
+      const type=String(r[3]||'').trim();
+      const field=String(r[4]||'').trim();
+      const oldV=String(r[5]||'').trim();
+      const newV=String(r[6]||'').trim();
+      if(!type) return false;
+      if(type.includes('УДАЛЁН')) return true;
+      if(!type.includes('ИЗМЕНЕНО')) return false;
+
+      if(field==='Состояние заказ-наряда'){
+        const normal=[
+          ['Заявка','В работе'],['Заявка','Начать работу'],['Начать работу','В работе'],
+          ['В работе','Ожидание ЗЧ'],['Ожидание ЗЧ','Выполнено'],['Выполнено','Закрыт']
+        ];
+        return !normal.some(([a,b])=>oldV===a && newV===b);
       }
       return true;
-    }
-    return false;
-  }).map(r=>({
-    date:String(r[dateIdx]||""), zn:String(r[znIdx]||""), type:String(r[typeIdx]||""),
-    field:String(r[fieldIdx]||"—"), old:String(r[oldIdx]||"—"), newv:String(r[newIdx]||"—"),
-    file:String(r[fileIdx]||""), key:_znKey(r)
-  }));
-}
+    });
 
-async function _znReadChanges(){
-  // Сначала Google Sheets API (работает и для закрытого листа при авторизации).
-  if(!accessToken) throw new Error("Нет доступа Google Sheets (accessToken отсутствует)");
-  const range=encodeURIComponent("'ИЗМЕНЕНИЯ'!A:G");
-  const apiUrl=`https://sheets.googleapis.com/v4/spreadsheets/${ZN_SPREADSHEET_ID}/values/${range}?valueRenderOption=FORMATTED_VALUE&majorDimension=ROWS&_=${Date.now()}`;
-  const res=await fetch(apiUrl,{cache:"no-store",headers:{Authorization:`Bearer ${accessToken}`}});
-  if(!res.ok){
-    let msg="HTTP "+res.status;
-    try{ const e=await res.json(); msg=e?.error?.message||msg; }catch(_){ }
-    throw new Error(msg);
-  }
-  const data=await res.json();
-  return Array.isArray(data.values)?data.values:[];
-}
+    _znChangesAll=filtered.map((r,i)=>({
+      date:String(r[0]||''), zn:String(r[2]||''), type:String(r[3]||''),
+      field:String(r[4]||'—'), old:String(r[5]||'—'), newv:String(r[6]||'—'), file:String(r[1]||''),
+      key:`${r[0]||''}_${r[2]||''}_${r[3]||''}_${r[4]||''}_${r[5]||''}_${r[6]||''}_${i}`
+    }));
 
-async function fetchChanges(){
-  const status=document.getElementById("znAlertSub");
-  try{
-    const values=await _znReadChanges();
-    const current=_znNormalizeRows(values);
-    _znChangesAll=current;
-
-    if(!_znChangesLoadedOnce){
-      // При первом открытии показываем уже имеющиеся изменения.
-      _znChangesUnseen=current;
-      _znChangesKeys=new Set(current.map(r=>r.key));
-      _znChangesLoadedOnce=true;
-    }else{
-      const fresh=current.filter(r=>!_znChangesKeys.has(r.key));
-      _znChangesUnseen=fresh;
-      _znChangesKeys=new Set(current.map(r=>r.key));
-    }
-
+    const seen=JSON.parse(localStorage.getItem('zn_seen_v2')||'[]');
+    _znChangesUnseen=_znChangesAll.filter(r=>!seen.includes(r.key));
     if(_znChangesUnseen.length) _showAlertBanner();
-    else{
-      const banner=document.getElementById("znAlertBanner");
-      if(banner) banner.style.display="none";
-    }
-    if(status && !_znChangesUnseen.length) status.textContent=`Проверено: ${new Date().toLocaleTimeString("ru-RU")}`;
-  }catch(err){
-    console.warn("fetchChanges error:",err);
-    if(status) status.textContent="⚠️ Не удалось проверить лист «ИЗМЕНЕНИЯ»: "+err.message;
-  }
+    else { const banner=document.getElementById('znAlertBanner'); if(banner) banner.style.display='none'; }
+  } catch(err) { console.error('fetchChanges error:',err); }
 }
 
-function _showAlertBanner(){
-  const banner=document.getElementById("znAlertBanner");
-  if(!banner) return;
-  banner.style.display="block";
-  const changed=_znChangesUnseen.filter(r=>r.type.includes("ИЗМЕНЕНО")).length;
-  const deleted=_znChangesUnseen.filter(r=>r.type.includes("УДАЛ")).length;
-  const parts=[];
-  if(changed) parts.push(`✏️ ${changed} изменено`);
-  if(deleted) parts.push(`🗑 ${deleted} удалено`);
-  const title=document.getElementById("znAlertTitle");
-  const sub=document.getElementById("znAlertSub");
-  if(title) title.textContent=`Обнаружены изменения в заказ-нарядах! (${parts.join(", ")})`;
-  const last=_znChangesUnseen[_znChangesUnseen.length-1];
-  if(sub) sub.textContent=`Последнее: ${last?.date||""} · Нажмите чтобы посмотреть подробности`;
+function _showAlertBanner() {
+  const banner = document.getElementById("znAlertBanner");
+  banner.style.display = "block";
 
-  // Системное уведомление браузера — только если разрешение уже дано.
-  try{
-    if("Notification" in window && Notification.permission==="granted"){
-      new Notification("Изменения в заказ-нарядах",{body:parts.join(", "),tag:"zn-changes"});
-    }
-  }catch(_){ }
+  const changed = _znChangesUnseen.filter(r => r.type.includes("ИЗМЕНЕНО")).length;
+  const deleted = _znChangesUnseen.filter(r => r.type.includes("УДАЛЁН")).length;
+
+  const parts = [];
+  if (changed) parts.push(`✏️ ${changed} изменено`);
+  if (deleted) parts.push(`🗑 ${deleted} удалено`);
+
+  document.getElementById("znAlertTitle").textContent =
+    `Обнаружены изменения в заказ-нарядах! (${parts.join(", ")})`;
+
+  const last = _znChangesUnseen[_znChangesUnseen.length - 1];
+  document.getElementById("znAlertSub").textContent =
+    `Последнее: ${last?.date || ""} · Нажмите чтобы посмотреть подробности`;
 }
 
-async function requestZNNotifications(){
-  try{
-    if("Notification" in window && Notification.permission==="default") await Notification.requestPermission();
-  }catch(_){ }
-}
+function openChangesModal() {
+  const tbody = document.getElementById("znChangesTbody");
+  tbody.innerHTML = _znChangesAll.map(r => {
+    const isDeleted = r.type.includes("УДАЛЁН");
+    const isChanged = r.type.includes("ИЗМЕНЕНО");
+    const rowCls    = isDeleted ? "ch-deleted" : isChanged ? "ch-changed" : "";
+    const badgeCls  = isDeleted ? "deleted" : "changed";
+    const unseen    = _znChangesUnseen.some(u => u.key === r.key);
+    return `<tr class="${rowCls}">
+      <td style="white-space:nowrap;color:var(--text2);font-size:12px">${r.date}${unseen ? ' <span style="color:#ff6b6b;font-size:10px">●NEW</span>' : ''}</td>
+      <td style="font-weight:700;white-space:nowrap">${r.zn}</td>
+      <td><span class="ch-badge ${badgeCls}">${r.type}</span></td>
+      <td>${r.field}</td>
+      <td style="color:#ff9999">${r.old}</td>
+      <td style="color:#88ff99">${r.newv}</td>
+      <td style="color:var(--text2);font-size:11px">${r.file}</td>
+    </tr>`;
+  }).join("") || '<tr><td colspan="7" style="text-align:center;color:var(--text2);padding:20px">Нет изменений</td></tr>';
 
-function startZNChangesWatcher(){
-  if(_znChangesTimer) clearInterval(_znChangesTimer);
-  requestZNNotifications();
-  fetchChanges();
-  _znChangesTimer=setInterval(fetchChanges,30000);
-}
-
-function openChangesModal(){
-  const tbody=document.getElementById("znChangesTbody");
-  if(!tbody) return;
-  tbody.innerHTML=_znChangesAll.map(r=>{
-    const isDeleted=r.type.includes("УДАЛ");
-    const isChanged=r.type.includes("ИЗМЕНЕНО");
-    const rowCls=isDeleted?"ch-deleted":isChanged?"ch-changed":"";
-    const badgeCls=isDeleted?"deleted":"changed";
-    const unseen=_znChangesUnseen.some(u=>u.key===r.key);
-    return `<tr class="${rowCls}"><td style="white-space:nowrap;color:var(--text2);font-size:12px">${r.date}${unseen?' <span style="color:#ff6b6b;font-size:10px">●NEW</span>':''}</td><td style="font-weight:700;white-space:nowrap">${r.zn}</td><td><span class="ch-badge ${badgeCls}">${r.type}</span></td><td>${r.field}</td><td style="color:#ff9999">${r.old}</td><td style="color:#88ff99">${r.newv}</td><td style="color:var(--text2);font-size:11px">${r.file}</td></tr>`;
-  }).join("")||'<tr><td colspan="7" style="text-align:center;color:var(--text2);padding:20px">Нет изменений</td></tr>';
   document.getElementById("znChangesModal").classList.remove("hidden");
 }
-function closeChangesModal(){document.getElementById("znChangesModal").classList.add("hidden");}
-function clearChangesFlag(){
-  _znChangesUnseen=[];
-  document.getElementById("znAlertBanner").style.display="none";
+
+function closeChangesModal() {
+  document.getElementById("znChangesModal").classList.add("hidden");
+}
+
+function clearChangesFlag() {
+  const seen = JSON.parse(localStorage.getItem("zn_seen_v2") || "[]");
+  _znChangesUnseen.forEach(r => { if (!seen.includes(r.key)) seen.push(r.key); });
+  localStorage.setItem("zn_seen_v2", JSON.stringify(seen));
+  _znChangesUnseen = [];
+  document.getElementById("znAlertBanner").style.display = "none";
   closeChangesModal();
 }
-document.addEventListener("click",e=>{if(e.target.id==="znChangesModal") closeChangesModal();});
+
+// Модалка фонига босса — ёпиш
+document.addEventListener("click", e => {
+  if (e.target.id === "znChangesModal") closeChangesModal();
+});
+
 </script>
 </body>
 </html>
