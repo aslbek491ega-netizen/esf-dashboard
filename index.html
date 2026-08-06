@@ -2456,9 +2456,16 @@ let _znChangesUnseen = [];
 
 async function fetchChanges() {
   try {
-    const url = `https://docs.google.com/spreadsheets/d/${ZN_SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(CHANGES_SHEET_NAME)}&cache=${Date.now()}`;
-    const res = await fetch(url, {cache: "no-store"});
-    if (!res.ok) return;
+    // Токенсиз — публик gviz орқали ўқиш
+    const sheetParam = encodeURIComponent(CHANGES_SHEET_NAME);
+    const url = `https://docs.google.com/spreadsheets/d/${ZN_SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${sheetParam}&t=${Date.now()}`;
+    const res = await fetch(url, {
+      method: "GET",
+      cache: "no-store",
+      mode: "cors",
+      credentials: "omit"
+    });
+    if (!res.ok) { console.warn("fetchChanges: HTTP", res.status); return; }
     const text = await res.text();
     const s = text.indexOf("{"), e = text.lastIndexOf("}");
     if (s < 0) return;
