@@ -240,6 +240,63 @@
 @media(max-width:800px){#znPage .zn-kpi-grid{grid-template-columns:repeat(2,1fr);}#znPage .zn-chart-box{height:240px;}#znPage .zn-detail-grid{grid-template-columns:1fr 1fr;}#znPage .zn-section-head{align-items:flex-start;flex-direction:column;}}
 @media(max-width:520px){#znPage .zn-kpi-grid{grid-template-columns:1fr;}#znPage .zn-detail-grid{grid-template-columns:1fr;}}
 
+
+/* ===== УВЕДОМЛЕНИЯ О ИЗМЕНЕНИЯХ ЗН ===== */
+#znAlertBanner{
+  display:none;
+  background:linear-gradient(90deg,#2d0000,#4a1500);
+  border:1px solid #cc3333;
+  border-radius:12px;
+  padding:14px 20px;
+  margin-bottom:16px;
+  cursor:pointer;
+  transition:opacity .2s;
+}
+#znAlertBanner:hover{opacity:.85;}
+.zn-alert-top{display:flex;justify-content:space-between;align-items:center;gap:12px;}
+.zn-alert-title{font-size:15px;font-weight:700;color:#ff6b6b;display:flex;align-items:center;gap:8px;}
+.zn-alert-sub{font-size:12px;color:#ffaa99;margin-top:5px;}
+.zn-alert-btn{
+  background:#cc3333;color:#fff;border:none;border-radius:8px;
+  padding:7px 16px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;
+}
+#znChangesModal{
+  position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;
+  display:flex;align-items:center;justify-content:center;
+}
+#znChangesModal.hidden{display:none;}
+.zn-ch-box{
+  background:var(--panel);border:1px solid var(--border);border-radius:16px;
+  width:min(960px,96vw);max-height:82vh;display:flex;flex-direction:column;overflow:hidden;
+}
+.zn-ch-head{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:18px 22px;border-bottom:1px solid var(--border);flex-shrink:0;
+}
+.zn-ch-head h2{margin:0;font-size:16px;color:#ff6b6b;}
+.zn-ch-close{
+  background:rgba(255,255,255,.08);border:1px solid var(--border);
+  color:var(--text);border-radius:8px;padding:6px 14px;cursor:pointer;font-size:13px;
+}
+.zn-ch-body{overflow-y:auto;padding:16px 22px;flex:1;}
+.zn-ch-body table{width:100%;border-collapse:collapse;font-size:13px;}
+.zn-ch-body th{
+  text-align:left;padding:8px 10px;background:var(--panel2);
+  color:var(--text2);font-weight:600;position:sticky;top:0;z-index:1;
+}
+.zn-ch-body td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top;}
+tr.ch-changed td{background:rgba(255,200,0,.05);}
+tr.ch-deleted td{background:rgba(255,50,50,.07);}
+.ch-badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;}
+.ch-badge.changed{background:rgba(255,200,0,.15);color:#ffc800;}
+.ch-badge.deleted{background:rgba(255,60,60,.18);color:#ff5555;}
+.zn-ch-footer{padding:12px 22px 18px;border-top:1px solid var(--border);flex-shrink:0;}
+.zn-ch-clear{
+  background:rgba(255,255,255,.06);border:1px solid var(--border);
+  color:var(--text2);border-radius:8px;padding:7px 18px;cursor:pointer;font-size:13px;
+}
+.zn-ch-clear:hover{background:rgba(255,255,255,.12);}
+
 </style>
 
 <style id="nm-only-css">
@@ -554,6 +611,47 @@
 
     <div class="cards zn-kpi-grid" id="znCards"></div>
 
+    <!-- УВЕДОМЛЕНИЕ ОБ ИЗМЕНЕНИЯХ -->
+    <div id="znAlertBanner" onclick="openChangesModal()">
+      <div class="zn-alert-top">
+        <div>
+          <div class="zn-alert-title">🔴 <span id="znAlertTitle">Обнаружены изменения в заказ-нарядах!</span></div>
+          <div class="zn-alert-sub" id="znAlertSub">Нажмите чтобы посмотреть подробности</div>
+        </div>
+        <button class="zn-alert-btn">Посмотреть →</button>
+      </div>
+    </div>
+
+    <!-- МОДАЛЬНОЕ ОКНО ИЗМЕНЕНИЙ -->
+    <div id="znChangesModal" class="hidden">
+      <div class="zn-ch-box">
+        <div class="zn-ch-head">
+          <h2>⚠️ Изменения в заказ-нарядах</h2>
+          <button class="zn-ch-close" onclick="closeChangesModal()">✕ Закрыть</button>
+        </div>
+        <div class="zn-ch-body">
+          <table>
+            <thead>
+              <tr>
+                <th>Дата/Время</th>
+                <th>№ ЗН</th>
+                <th>Тип</th>
+                <th>Поле</th>
+                <th>Старое значение</th>
+                <th>Новое значение</th>
+                <th>Файл</th>
+              </tr>
+            </thead>
+            <tbody id="znChangesTbody"></tbody>
+          </table>
+        </div>
+        <div class="zn-ch-footer">
+          <button class="zn-ch-clear" onclick="clearChangesFlag()">✅ Отметить все как просмотренные</button>
+        </div>
+      </div>
+    </div>
+
+
     <div class="panel zn-filter">
       <div><label>Поиск</label><input class="wide" id="znSearch" placeholder="Номер / контрагент / VIN / гос. номер / вид ремонта"></div>
       <div><label>С даты</label><input type="date" id="znFrom"></div>
@@ -727,6 +825,7 @@ const SCOPES = "https://www.googleapis.com/auth/spreadsheets.readonly";
 // Тестовый публичный Google Sheets для раздела «Заказ-наряды».
 const ZN_SPREADSHEET_ID = "1xCmvibrmyf9h0xHoPEQiZ6SDchoXtPeFXD3ZV_BDX1M";
 const ZN_GID = "600028169";
+const CHANGES_SHEET_NAME = "ИЗМЕНЕНИЯ";
 // =========================================
 
 let accessToken = null;
@@ -2070,6 +2169,7 @@ async function fetchZN(){
 
 function openZNPage(){
   closeNomenclaturePage();
+  fetchChanges();
   document.getElementById("znPage").classList.remove("hidden");
   if(!znRows.length)
     fetchZN().catch(e=>document.getElementById("znErr").textContent="Ошибка загрузки ЗН: "+e.message);
@@ -2347,6 +2447,146 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.querySelectorAll("#nmPage .nmToggle").forEach(btn=>btn.onclick=()=>{const el=document.getElementById(btn.dataset.target); el.classList.toggle("hidden"); btn.textContent=el.classList.contains("hidden")?"Развернуть":"Свернуть";});
   document.querySelectorAll("#nmPage .nm-more").forEach(btn=>btn.onclick=()=>{const list=document.getElementById(btn.dataset.list); const expanded=list.classList.toggle("expanded"); list.querySelectorAll(".nm-list-row").forEach((r,i)=>{if(i>=10) r.classList.toggle("expanded",expanded);}); btn.textContent=expanded?"Свернуть":"Показать ещё 10";});
 });
+
+// ============================================
+// УВЕДОМЛЕНИЯ ОБ ИЗМЕНЕНИЯХ В ЗАКАЗ-НАРЯДАХ
+// ============================================
+let _znChangesAll = [];
+let _znChangesUnseen = [];
+
+async function fetchChanges() {
+  try {
+    const url = `https://docs.google.com/spreadsheets/d/${ZN_SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(CHANGES_SHEET_NAME)}&cache=${Date.now()}`;
+    const res = await fetch(url, {cache: "no-store"});
+    if (!res.ok) return;
+    const text = await res.text();
+    const s = text.indexOf("{"), e = text.lastIndexOf("}");
+    if (s < 0) return;
+
+    const data = JSON.parse(text.slice(s, e + 1));
+    const cols = (data.table?.cols || []).map(c => String(c.label || c.id || ""));
+    const rows = (data.table?.rows || []).map(r => (r.c || []).map(c => c?.f ?? c?.v ?? ""));
+
+    const typeIdx = cols.indexOf("Тип");
+    const dateIdx = cols.indexOf("Дата/Время");
+    const znIdx   = cols.indexOf("№ ЗН");
+    const fieldIdx= cols.indexOf("Поле");
+    const oldIdx  = cols.indexOf("Старое значение");
+    const newIdx  = cols.indexOf("Новое значение");
+    const fileIdx = cols.indexOf("Файл");
+
+    // Нормал статус ўзгаришлари (хабар берма)
+    const NORMAL_FLOW = [
+      "Заявка", "Начать работу", "В работе", "Ожидание ЗЧ", "Выполнено", "Закрыт"
+    ];
+    // Фильтр: УДАЛЁН — ҳамиша хабар бер
+    // ИЗМЕНЕНО — фақат шубҳали ўзгаришларни кўрсат
+    const filtered = rows.filter(r => {
+      const t    = String(r[typeIdx]  || "");
+      const fld  = String(r[fieldIdx] || "");
+      const ov   = String(r[oldIdx]   || "").trim();
+      const nv   = String(r[newIdx]   || "").trim();
+
+      if (t.includes("УДАЛЁН")) return true;
+
+      if (t.includes("ИЗМЕНЕНО")) {
+        // Состояние ўзгарса — нормал оқимини текшир
+        if (fld === "Состояние заказ-наряда") {
+          // Орқага кетиш ёки "Закрыт/Выполнено" дан бошқасига ўтиш — шубҳали
+          const closedStates = ["Закрыт", "Выполнено", "Аннулирован"];
+          if (closedStates.includes(ov) && ov !== nv) return true; // Ёпилган → бошқа ⚠️
+          return false; // Нормал оқим — хабар берма
+        }
+        // Бошқа барча майдонлар — хабар бер
+        return true;
+      }
+      return false;
+    });
+
+    _znChangesAll = filtered.map(r => ({
+      date:  r[dateIdx]  || "",
+      zn:    r[znIdx]    || "",
+      type:  r[typeIdx]  || "",
+      field: r[fieldIdx] || "—",
+      old:   r[oldIdx]   || "—",
+      newv:  r[newIdx]   || "—",
+      file:  r[fileIdx]  || "",
+      key:   `${r[dateIdx]}_${r[znIdx]}_${r[fieldIdx]}`
+    }));
+
+    // Просмотренные из localStorage
+    const seen = JSON.parse(localStorage.getItem("zn_seen_v2") || "[]");
+    _znChangesUnseen = _znChangesAll.filter(r => !seen.includes(r.key));
+
+    if (_znChangesUnseen.length > 0) {
+      _showAlertBanner();
+    } else {
+      document.getElementById("znAlertBanner").style.display = "none";
+    }
+  } catch(err) {
+    console.warn("fetchChanges error:", err);
+  }
+}
+
+function _showAlertBanner() {
+  const banner = document.getElementById("znAlertBanner");
+  banner.style.display = "block";
+
+  const changed = _znChangesUnseen.filter(r => r.type.includes("ИЗМЕНЕНО")).length;
+  const deleted = _znChangesUnseen.filter(r => r.type.includes("УДАЛЁН")).length;
+
+  const parts = [];
+  if (changed) parts.push(`✏️ ${changed} изменено`);
+  if (deleted) parts.push(`🗑 ${deleted} удалено`);
+
+  document.getElementById("znAlertTitle").textContent =
+    `Обнаружены изменения в заказ-нарядах! (${parts.join(", ")})`;
+
+  const last = _znChangesUnseen[_znChangesUnseen.length - 1];
+  document.getElementById("znAlertSub").textContent =
+    `Последнее: ${last?.date || ""} · Нажмите чтобы посмотреть подробности`;
+}
+
+function openChangesModal() {
+  const tbody = document.getElementById("znChangesTbody");
+  tbody.innerHTML = _znChangesAll.map(r => {
+    const isDeleted = r.type.includes("УДАЛЁН");
+    const isChanged = r.type.includes("ИЗМЕНЕНО");
+    const rowCls    = isDeleted ? "ch-deleted" : isChanged ? "ch-changed" : "";
+    const badgeCls  = isDeleted ? "deleted" : "changed";
+    const unseen    = _znChangesUnseen.some(u => u.key === r.key);
+    return `<tr class="${rowCls}">
+      <td style="white-space:nowrap;color:var(--text2);font-size:12px">${r.date}${unseen ? ' <span style="color:#ff6b6b;font-size:10px">●NEW</span>' : ''}</td>
+      <td style="font-weight:700;white-space:nowrap">${r.zn}</td>
+      <td><span class="ch-badge ${badgeCls}">${r.type}</span></td>
+      <td>${r.field}</td>
+      <td style="color:#ff9999">${r.old}</td>
+      <td style="color:#88ff99">${r.newv}</td>
+      <td style="color:var(--text2);font-size:11px">${r.file}</td>
+    </tr>`;
+  }).join("") || '<tr><td colspan="7" style="text-align:center;color:var(--text2);padding:20px">Нет изменений</td></tr>';
+
+  document.getElementById("znChangesModal").classList.remove("hidden");
+}
+
+function closeChangesModal() {
+  document.getElementById("znChangesModal").classList.add("hidden");
+}
+
+function clearChangesFlag() {
+  const seen = JSON.parse(localStorage.getItem("zn_seen_v2") || "[]");
+  _znChangesUnseen.forEach(r => { if (!seen.includes(r.key)) seen.push(r.key); });
+  localStorage.setItem("zn_seen_v2", JSON.stringify(seen));
+  _znChangesUnseen = [];
+  document.getElementById("znAlertBanner").style.display = "none";
+  closeChangesModal();
+}
+
+// Модалка фонига босса — ёпиш
+document.addEventListener("click", e => {
+  if (e.target.id === "znChangesModal") closeChangesModal();
+});
+
 </script>
 </body>
 </html>
