@@ -2170,8 +2170,7 @@ async function fetchZN(){
 function openZNPage(){
   closeNomenclaturePage();
   document.getElementById("znPage").classList.remove("hidden");
-  // Баннерни автоматик кўрсатиш — саҳифа очилгандан кейин
-  setTimeout(()=>fetchChanges(), 500);
+  setTimeout(()=>fetchChanges(), 800);
   if(!znRows.length)
     fetchZN().catch(e=>document.getElementById("znErr").textContent="Ошибка загрузки ЗН: "+e.message);
   else renderZN();
@@ -2183,6 +2182,7 @@ document.addEventListener("DOMContentLoaded",()=>{
     closeZNPage();znCloseModal();
   };
   document.getElementById("znRefreshBtn").onclick=()=>{
+    fetchChanges();
     fetchZN().catch(e=>document.getElementById("znErr").textContent="Ошибка загрузки ЗН: "+e.message);
   };
 
