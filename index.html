@@ -906,7 +906,7 @@ function buildSidebar(){
           if (!page) throw new Error("Элемент znPage не найден");
           page.classList.remove("hidden");
           page.style.display = "block";
-          closeNomenclaturePage();
+          closeNomenclaturePage();setTimeout(()=>fetchChanges(),800);
           if (!znRows.length) {
             fetchZN().catch(err => {
               const box = document.getElementById("znErr");
