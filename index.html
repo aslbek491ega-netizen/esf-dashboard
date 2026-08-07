@@ -2168,11 +2168,9 @@ async function fetchZN(){
 }
 
 function openZNPage(){
-  closeNomenclaturePage();setTimeout(()=>fetchChanges(),800);
+  closeNomenclaturePage();
   document.getElementById("znPage").classList.remove("hidden");
-  // Аввал кэшдаги маълумотни кўрсат, кейин янгила
-  if(_znChangesUnseen && _znChangesUnseen.length > 0) _showAlertBanner();
-  fetchChanges();
+  setTimeout(()=>fetchChanges(), 1500);
   if(!znRows.length)
     fetchZN().catch(e=>document.getElementById("znErr").textContent="Ошибка загрузки ЗН: "+e.message);
   else renderZN();
