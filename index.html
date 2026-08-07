@@ -2182,7 +2182,7 @@ document.addEventListener("DOMContentLoaded",()=>{
     closeZNPage();znCloseModal();
   };
   document.getElementById("znRefreshBtn").onclick=()=>{
-    fetchZN().catch(e=>document.getElementById("znErr").textContent="Ошибка загрузки ЗН: "+e.message);
+    fetchChanges();fetchZN().catch(e=>document.getElementById("znErr").textContent="Ошибка загрузки ЗН: "+e.message);
   };
 
   ["znSearch","znFrom","znTo"].forEach(id=>{
