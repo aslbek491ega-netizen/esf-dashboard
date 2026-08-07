@@ -2169,6 +2169,7 @@ async function fetchZN(){
 
 function openZNPage(){
   closeNomenclaturePage();
+  setTimeout(()=>fetchChanges(),500);
   document.getElementById("znPage").classList.remove("hidden");
   // Баннерни автоматик кўрсатиш — саҳифа очилгандан кейин
   setTimeout(()=>fetchChanges(), 500);
