@@ -2475,14 +2475,9 @@ async function fetchChanges() {
     // A=0:ДатаВремя, B=1:Файл, C=2:№ЗН, D=3:Тип, E=4:Поле, F=5:Старое, G=6:Новое
     const allRows = (data.table?.rows || []).map(r => (r.c || []).map(c => c?.f ?? c?.v ?? ""));
     
-    // 1-қатор сарлавҳами ёки маълумотми — текшириш
-    let rows = allRows;
-    if (allRows.length > 0) {
-      const first = allRows[0];
-      // Агар 1-қатор сарлавҳа бўлса (Дата/Время ёки бўш) — ўтказиб юбор
-      const isHeader = String(first[0]||"").includes("Дата") || String(first[3]||"").includes("Тип");
-      if (isHeader) rows = allRows.slice(1);
-    }
+    // 1-қатор ҳамиша сарлавҳа — ўтказиб юбор
+    const rows = allRows.slice(1);
+    console.log("Жами қаторлар:", rows.length, "Биринчи:", rows[0]);
 
     const dateIdx  = 0;  // A: Дата/Время
     const fileIdx  = 1;  // B: Файл
