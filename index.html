@@ -2170,7 +2170,8 @@ async function fetchZN(){
 function openZNPage(){
   closeNomenclaturePage();
   document.getElementById("znPage").classList.remove("hidden");
-  setTimeout(()=>fetchChanges(), 1500);
+  // Саҳифа очилгандан кейин баннерни кўрсатиш
+  requestAnimationFrame(()=>requestAnimationFrame(()=>fetchChanges()));
   if(!znRows.length)
     fetchZN().catch(e=>document.getElementById("znErr").textContent="Ошибка загрузки ЗН: "+e.message);
   else renderZN();
