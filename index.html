@@ -2170,7 +2170,9 @@ async function fetchZN(){
 function openZNPage(){
   closeNomenclaturePage();
   document.getElementById("znPage").classList.remove("hidden");
-  setTimeout(()=>fetchChanges(), 800);
+  // Аввал кэшдаги маълумотни кўрсат, кейин янгила
+  if(_znChangesUnseen && _znChangesUnseen.length > 0) _showAlertBanner();
+  fetchChanges();
   if(!znRows.length)
     fetchZN().catch(e=>document.getElementById("znErr").textContent="Ошибка загрузки ЗН: "+e.message);
   else renderZN();
@@ -2183,7 +2185,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   };
   document.getElementById("znRefreshBtn").onclick=()=>{
     fetchChanges();
-    fetchChanges();fetchZN().catch(e=>document.getElementById("znErr").textContent="Ошибка загрузки ЗН: "+e.message);
+    fetchZN().catch(e=>document.getElementById("znErr").textContent="Ошибка загрузки ЗН: "+e.message);
   };
 
   ["znSearch","znFrom","znTo"].forEach(id=>{
