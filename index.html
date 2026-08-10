@@ -244,13 +244,18 @@
 /* ===== УВЕДОМЛЕНИЯ О ИЗМЕНЕНИЯХ ЗН ===== */
 #znAlertBanner{
   display:none;
+  position:fixed;
+  bottom:24px;
+  right:24px;
+  z-index:8888;
   background:linear-gradient(90deg,#2d0000,#4a1500);
   border:1px solid #cc3333;
   border-radius:12px;
   padding:14px 20px;
-  margin-bottom:16px;
   cursor:pointer;
   transition:opacity .2s;
+  width:min(480px,90vw);
+  box-shadow:0 4px 24px rgba(0,0,0,.5);
 }
 #znAlertBanner:hover{opacity:.85;}
 .zn-alert-top{display:flex;justify-content:space-between;align-items:center;gap:12px;}
@@ -595,6 +600,18 @@ tr.ch-deleted td{background:rgba(255,50,50,.07);}
 
 
 
+
+    <!-- УВЕДОМЛЕНИЕ ОБ ИЗМЕНЕНИЯХ -->
+    <div id="znAlertBanner" onclick="openChangesModal()">
+      <div class="zn-alert-top">
+        <div>
+          <div class="zn-alert-title">🔴 <span id="znAlertTitle">Обнаружены изменения в заказ-нарядах!</span></div>
+          <div class="zn-alert-sub" id="znAlertSub">Нажмите чтобы посмотреть подробности</div>
+        </div>
+        <button class="zn-alert-btn">Посмотреть →</button>
+      </div>
+    </div>
+
 <!-- ЗАКАЗ-НАРЯДЫ: отдельный раздел -->
 <div id="znPage" class="hidden">
   <div class="zn-wrap">
@@ -611,16 +628,6 @@ tr.ch-deleted td{background:rgba(255,50,50,.07);}
 
     <div class="cards zn-kpi-grid" id="znCards"></div>
 
-    <!-- УВЕДОМЛЕНИЕ ОБ ИЗМЕНЕНИЯХ -->
-    <div id="znAlertBanner" onclick="openChangesModal()">
-      <div class="zn-alert-top">
-        <div>
-          <div class="zn-alert-title">🔴 <span id="znAlertTitle">Обнаружены изменения в заказ-нарядах!</span></div>
-          <div class="zn-alert-sub" id="znAlertSub">Нажмите чтобы посмотреть подробности</div>
-        </div>
-        <button class="zn-alert-btn">Посмотреть →</button>
-      </div>
-    </div>
 
     <!-- МОДАЛЬНОЕ ОКНО ИЗМЕНЕНИЙ -->
     <div id="znChangesModal" class="hidden">
