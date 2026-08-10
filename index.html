@@ -1777,6 +1777,14 @@ function znFiltered(){
       &&(!division||znField(r,"Подразделение")===division)
       &&(!shop||znField(r,"Цех")===shop)
       &&(!priceType||znField(r,"Тип цен")===priceType);
+  }).sort((a,b)=>{
+    const da=znDate(znField(a,"Дата"))||"";
+    const db=znDate(znField(b,"Дата"))||"";
+    if(db>da) return 1;
+    if(db<da) return -1;
+    const na=znField(a,"Номер")||"";
+    const nb=znField(b,"Номер")||"";
+    return nb.localeCompare(na,"ru");
   });
 }
 function znDestroyCharts(){
