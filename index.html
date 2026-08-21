@@ -715,38 +715,48 @@ tr.ch-deleted td{background:rgba(255,50,50,.07);}
         <h3>Распределение по оплате</h3>
         <span>Платные / Бесплатные</span>
       </div>
-      <div id="znPaymentSummary"><div id="znOplatyLoading" style="color:var(--text2);font-size:13px;padding:10px 0;">⏳ Загружаю данные об оплатах...</div>
-
-      <!-- Огоҳлантиришлар -->
-      <div id="znDebtAlert" class="zn-debt-alert">
-        <div class="alert-title">⚠️ <span id="znDebtAlertTitle">Есть дебиторская задолженность</span></div>
-        <div class="alert-sub" id="znDebtAlertSub"></div>
-      </div>
-      <div id="znCloseAlert" class="zn-close-alert">
-        <div class="alert-title">✅ <span id="znCloseAlertTitle">Можно закрыть заказ-наряды</span></div>
-        <div class="alert-sub" id="znCloseAlertSub"></div>
-      </div>
-
-      <!-- KPI карточкалар -->
-      <div class="zn-oplaty-grid" id="znOplatyKpi"></div>
-
-      <!-- Таблар -->
-      <div class="zn-oplaty-tabs">
-        <div class="zn-oplaty-tab active" onclick="znOplatyTab('debt')">🔴 Дебиторка</div>
-        <div class="zn-oplaty-tab" onclick="znOplatyTab('can-close')">✅ Можно закрыть</div>
-        <div class="zn-oplaty-tab" onclick="znOplatyTab('partial')">🟡 Частично оплачены</div>
-        <div class="zn-oplaty-tab" onclick="znOplatyTab('all')">📋 Все оплаты</div>
-      </div>
-
-      <!-- Жадвал -->
-      <div style="overflow-x:auto;max-height:420px;overflow-y:auto;">
-        <table class="zn-debt-table">
-          <thead id="znOplatyThead"></thead>
-          <tbody id="znOplatyTbody"></tbody>
-        </table>
-      </div></div>
+      <div id="znPaymentOld"></div>
     </div>
 
+    <!-- ОПЛАТА ПО ЗН ПАНЕЛИ -->
+    <div class="panel" style="margin-top:16px;">
+      <div class="zn-payment-head">
+        <h3>💳 Оплата по заказ-нарядам</h3>
+        <span id="znOplatyUpdated" style="font-size:12px;color:var(--text2)"></span>
+      </div>
+      <div id="znOplatyContainer">
+        <div id="znOplatyLoading" style="color:var(--text2);font-size:13px;padding:10px 0;">⏳ Загружаю данные об оплатах...</div>
+
+        <!-- Огоҳлантиришлар -->
+        <div id="znDebtAlert" class="zn-debt-alert">
+          <div class="alert-title">⚠️ <span id="znDebtAlertTitle"></span></div>
+          <div class="alert-sub" id="znDebtAlertSub"></div>
+        </div>
+        <div id="znCloseAlert" class="zn-close-alert">
+          <div class="alert-title">✅ <span id="znCloseAlertTitle"></span></div>
+          <div class="alert-sub" id="znCloseAlertSub"></div>
+        </div>
+
+        <!-- KPI -->
+        <div class="zn-oplaty-grid" id="znOplatyKpi"></div>
+
+        <!-- Таблар -->
+        <div class="zn-oplaty-tabs">
+          <div class="zn-oplaty-tab active" onclick="znOplatyTab('debt')">🔴 Дебиторка</div>
+          <div class="zn-oplaty-tab" onclick="znOplatyTab('can-close')">✅ Можно закрыть</div>
+          <div class="zn-oplaty-tab" onclick="znOplatyTab('partial')">🟡 Частично</div>
+          <div class="zn-oplaty-tab" onclick="znOplatyTab('all')">📋 Все оплаты</div>
+        </div>
+
+        <!-- Жадвал -->
+        <div style="overflow-x:auto;max-height:400px;overflow-y:auto;">
+          <table class="zn-debt-table">
+            <thead id="znOplatyThead"></thead>
+            <tbody id="znOplatyTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
 
     <div class="grid2">
       <div class="panel">
@@ -2032,7 +2042,7 @@ function znPaymentSummaryHtml(rows){
   ${table}`;
 }
 function renderZNPaymentSummary(rows){
-  const el=document.getElementById("znPaymentSummary");
+  const el=document.getElementById("znPaymentOld");
   if(el){
     el.innerHTML=znPaymentSummaryHtml(rows);
     const more=document.getElementById("znPaymentMoreBtn");
