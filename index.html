@@ -302,6 +302,41 @@ tr.ch-deleted td{background:rgba(255,50,50,.07);}
 }
 .zn-ch-clear:hover{background:rgba(255,255,255,.12);}
 
+
+/* ===== ОПЛАТЫ ДАШБОРД ===== */
+.zn-oplaty-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px;}
+.zn-oplaty-kpi{background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;}
+.zn-oplaty-kpi .label{font-size:11px;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;}
+.zn-oplaty-kpi .value{font-size:22px;font-weight:800;margin-bottom:2px;}
+.zn-oplaty-kpi .sub{font-size:11px;color:var(--text2);}
+.zn-oplaty-kpi.red .value{color:#ff4757;}
+.zn-oplaty-kpi.green .value{color:#2ecc71;}
+.zn-oplaty-kpi.blue .value{color:#4f7cff;}
+.zn-oplaty-kpi.amber .value{color:#f5a623;}
+
+.zn-debt-alert{background:linear-gradient(90deg,#160a00,#2a1500);border:1px solid #f5a623;border-radius:12px;padding:14px 18px;margin-bottom:16px;display:none;}
+.zn-debt-alert .alert-title{font-size:14px;font-weight:700;color:#f5a623;margin-bottom:4px;}
+.zn-debt-alert .alert-sub{font-size:12px;color:#d4a55a;}
+
+.zn-close-alert{background:linear-gradient(90deg,#001a08,#002a10);border:1px solid #2ecc71;border-radius:12px;padding:14px 18px;margin-bottom:16px;display:none;}
+.zn-close-alert .alert-title{font-size:14px;font-weight:700;color:#2ecc71;margin-bottom:4px;}
+.zn-close-alert .alert-sub{font-size:12px;color:#5dba8a;}
+
+.zn-oplaty-tabs{display:flex;gap:8px;margin-bottom:14px;}
+.zn-oplaty-tab{padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--panel2);color:var(--text2);transition:all .15s;}
+.zn-oplaty-tab.active{background:#4f7cff;color:#fff;border-color:#4f7cff;}
+
+.zn-debt-table{width:100%;border-collapse:collapse;font-size:12px;}
+.zn-debt-table th{text-align:left;padding:8px 10px;background:var(--panel2);color:var(--text2);font-weight:600;position:sticky;top:0;}
+.zn-debt-table td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle;}
+.zn-debt-table tr:hover td{background:rgba(79,124,255,.06);}
+.zn-debt-badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;}
+.zn-debt-badge.full{background:rgba(46,204,113,.15);color:#2ecc71;}
+.zn-debt-badge.partial{background:rgba(245,166,35,.15);color:#f5a623;}
+.zn-debt-badge.none{background:rgba(255,71,87,.15);color:#ff4757;}
+.zn-progress-bar{height:6px;border-radius:3px;background:var(--panel2);overflow:hidden;margin-top:4px;}
+.zn-progress-fill{height:100%;border-radius:3px;transition:width .3s;}
+
 </style>
 
 <style id="nm-only-css">
@@ -680,7 +715,36 @@ tr.ch-deleted td{background:rgba(255,50,50,.07);}
         <h3>Распределение по оплате</h3>
         <span>Платные / Бесплатные</span>
       </div>
-      <div id="znPaymentSummary"></div>
+      <div id="znPaymentSummary"><div id="znOplatyLoading" style="color:var(--text2);font-size:13px;padding:10px 0;">⏳ Загружаю данные об оплатах...</div>
+
+      <!-- Огоҳлантиришлар -->
+      <div id="znDebtAlert" class="zn-debt-alert">
+        <div class="alert-title">⚠️ <span id="znDebtAlertTitle">Есть дебиторская задолженность</span></div>
+        <div class="alert-sub" id="znDebtAlertSub"></div>
+      </div>
+      <div id="znCloseAlert" class="zn-close-alert">
+        <div class="alert-title">✅ <span id="znCloseAlertTitle">Можно закрыть заказ-наряды</span></div>
+        <div class="alert-sub" id="znCloseAlertSub"></div>
+      </div>
+
+      <!-- KPI карточкалар -->
+      <div class="zn-oplaty-grid" id="znOplatyKpi"></div>
+
+      <!-- Таблар -->
+      <div class="zn-oplaty-tabs">
+        <div class="zn-oplaty-tab active" onclick="znOplatyTab('debt')">🔴 Дебиторка</div>
+        <div class="zn-oplaty-tab" onclick="znOplatyTab('can-close')">✅ Можно закрыть</div>
+        <div class="zn-oplaty-tab" onclick="znOplatyTab('partial')">🟡 Частично оплачены</div>
+        <div class="zn-oplaty-tab" onclick="znOplatyTab('all')">📋 Все оплаты</div>
+      </div>
+
+      <!-- Жадвал -->
+      <div style="overflow-x:auto;max-height:420px;overflow-y:auto;">
+        <table class="zn-debt-table">
+          <thead id="znOplatyThead"></thead>
+          <tbody id="znOplatyTbody"></tbody>
+        </table>
+      </div></div>
     </div>
 
 
@@ -833,6 +897,7 @@ const SCOPES = "https://www.googleapis.com/auth/spreadsheets.readonly";
 const ZN_SPREADSHEET_ID = "1xCmvibrmyf9h0xHoPEQiZ6SDchoXtPeFXD3ZV_BDX1M";
 const ZN_GID = "600028169";
 const CHANGES_SHEET_NAME = "ИЗМЕНЕНИЯ";
+const OPLATY_SHEET_NAME   = "ОПЛАТЫ";
 // =========================================
 
 let accessToken = null;
@@ -2183,6 +2248,7 @@ async function fetchZN(){
 }
 
 function openZNPage(){
+  setTimeout(()=>fetchOplaty(), 1200);
   closeNomenclaturePage();
   document.getElementById("znPage").classList.remove("hidden");
   setTimeout(()=>fetchChanges(), 1500);
@@ -2199,6 +2265,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.getElementById("znRefreshBtn").onclick=()=>{
     fetchChanges();
     fetchZN().catch(e=>document.getElementById("znErr").textContent="Ошибка загрузки ЗН: "+e.message);
+    fetchOplaty();
   };
 
   ["znSearch","znFrom","znTo"].forEach(id=>{
@@ -2615,6 +2682,164 @@ function clearChangesFlag() {
 document.addEventListener("click", e => {
   if (e.target.id === "znChangesModal") closeChangesModal();
 });
+
+
+// ============================================================
+// ОПЛАТЫ ПО ЗН
+// ============================================================
+let _oplatyData = [];      // Барча тўловлар
+let _znSumMap   = {};      // {ЗН №: жами сумма} — ЗН реестридан
+let _currentOplatyTab = 'debt';
+
+async function fetchOplaty() {
+  try {
+    document.getElementById("znOplatyLoading").style.display = "block";
+
+    // ОПЛАТЫ листини ўқиш
+    const url = `https://docs.google.com/spreadsheets/d/${ZN_SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(OPLATY_SHEET_NAME)}&t=${Date.now()}`;
+    const res = await fetch(url, {cache:"no-store"});
+    if (!res.ok) { console.warn("fetchOplaty: HTTP", res.status); return; }
+    const text = await res.text();
+    const s = text.indexOf("{"), e = text.lastIndexOf("}");
+    if (s < 0) return;
+    const data = JSON.parse(text.slice(s, e+1));
+    const rows = (data.table?.rows || []).map(r => (r.c || []).map(c => c?.f ?? c?.v ?? ""));
+    
+    // 0:ЗН№ 1:Дата 2:Контрагент 3:Организация 4:Тип 5:Вид 6:Сумма 7:Касса 8:Номер 9:Файл 10:Загрузка
+    _oplatyData = rows.slice(1).filter(r => r[0]).map(r => ({
+      zn:          String(r[0] || ""),
+      date:        String(r[1] || ""),
+      client:      String(r[2] || ""),
+      org:         String(r[3] || ""),
+      type:        String(r[4] || ""),
+      view:        String(r[5] || ""),
+      sum:         parseFloat(String(r[6] || "0").replace(/\s/g,"").replace(",",".")) || 0,
+      kassа:       String(r[7] || ""),
+      doc:         String(r[8] || ""),
+    }));
+
+    document.getElementById("znOplatyLoading").style.display = "none";
+    _renderOplaty();
+  } catch(err) {
+    console.warn("fetchOplaty error:", err);
+    document.getElementById("znOplatyLoading").style.display = "none";
+  }
+}
+
+function _renderOplaty() {
+  // ЗН реестридан сумма харитасини тузиш
+  _znSumMap = {};
+  if (typeof znRows !== 'undefined') {
+    znRows.forEach(row => {
+      const num = znField(row, "Номер");
+      const det = parseFloat(String(znField(row, "Сумма деталей") || "0").replace(/\s/g,"").replace(",",".")) || 0;
+      const wrk = parseFloat(String(znField(row, "Сумма работ")   || "0").replace(/\s/g,"").replace(",",".")) || 0;
+      if (num) _znSumMap[num] = det + wrk;
+    });
+  }
+
+  // Тўловларни ЗН бўйича гурухлаш
+  const byZN = {};
+  _oplatyData.forEach(op => {
+    if (!byZN[op.zn]) byZN[op.zn] = { zn: op.zn, client: op.client, org: op.org, nal: 0, card: 0, total: 0, ops: [] };
+    if (op.type === "Наличные") byZN[op.zn].nal  += op.sum;
+    else                        byZN[op.zn].card += op.sum;
+    byZN[op.zn].total += op.sum;
+    byZN[op.zn].ops.push(op);
+  });
+
+  const znList = Object.values(byZN).map(z => {
+    const znSum  = _znSumMap[z.zn] || 0;
+    const debt   = znSum > 0 ? Math.max(0, znSum - z.total) : 0;
+    const pct    = znSum > 0 ? Math.min(100, Math.round(z.total / znSum * 100)) : 0;
+    const status = znSum === 0 ? "unknown" : z.total >= znSum ? "full" : z.total > 0 ? "partial" : "none";
+    return {...z, znSum, debt, pct, status};
+  });
+
+  // KPI
+  const totalPaid     = znList.reduce((a,z) => a + z.total, 0);
+  const totalDebt     = znList.reduce((a,z) => a + z.debt, 0);
+  const canClose      = znList.filter(z => z.status === "full").length;
+  const hasDebt       = znList.filter(z => z.status === "partial" || z.status === "none").length;
+  const fmt = n => n.toLocaleString("ru-RU", {maximumFractionDigits:0}) + " сум";
+
+  document.getElementById("znOplatyKpi").innerHTML = `
+    <div class="zn-oplaty-kpi blue"><div class="label">Всего получено</div><div class="value">${fmt(totalPaid)}</div><div class="sub">${_oplatyData.length} платежей</div></div>
+    <div class="zn-oplaty-kpi red"><div class="label">Дебиторка</div><div class="value">${fmt(totalDebt)}</div><div class="sub">${hasDebt} заказ-нарядов</div></div>
+    <div class="zn-oplaty-kpi green"><div class="label">Можно закрыть</div><div class="value">${canClose}</div><div class="sub">ЗН оплачены полностью</div></div>
+    <div class="zn-oplaty-kpi amber"><div class="label">Частично оплачены</div><div class="value">${znList.filter(z=>z.status==="partial").length}</div><div class="sub">ЗН</div></div>
+  `;
+
+  // Огоҳлантиришлар
+  if (totalDebt > 0) {
+    document.getElementById("znDebtAlert").style.display = "block";
+    document.getElementById("znDebtAlertTitle").textContent = `Дебиторская задолженность: ${fmt(totalDebt)}`;
+    document.getElementById("znDebtAlertSub").textContent  = `${hasDebt} заказ-нарядов с неполной оплатой`;
+  }
+  if (canClose > 0) {
+    document.getElementById("znCloseAlert").style.display = "block";
+    document.getElementById("znCloseAlertTitle").textContent = `${canClose} заказ-нарядов оплачены полностью — можно закрыть`;
+    document.getElementById("znCloseAlertSub").textContent   = "Статус ЗН ещё не «Закрыт», но оплата поступила полностью";
+  }
+
+  // Жадвални кўрсатиш
+  window._znListCache = znList;
+  _renderOplatyTable(znList);
+}
+
+function znOplatyTab(tab) {
+  _currentOplatyTab = tab;
+  document.querySelectorAll(".zn-oplaty-tab").forEach((el,i) => {
+    el.classList.toggle("active", ["debt","can-close","partial","all"][i] === tab);
+  });
+  if (!window._znListCache) return;
+  let list = window._znListCache;
+  if      (tab === "debt")      list = list.filter(z => z.debt > 0);
+  else if (tab === "can-close") list = list.filter(z => z.status === "full");
+  else if (tab === "partial")   list = list.filter(z => z.status === "partial");
+  _renderOplatyTable(list);
+}
+
+function _renderOplatyTable(list) {
+  const fmt = n => n.toLocaleString("ru-RU", {maximumFractionDigits:0});
+  
+  document.getElementById("znOplatyThead").innerHTML = `<tr>
+    <th>№ ЗН</th><th>Контрагент</th><th>Орг.</th>
+    <th style="text-align:right">Нал.</th>
+    <th style="text-align:right">Карта</th>
+    <th style="text-align:right">Итого</th>
+    <th style="text-align:right">Сумма ЗН</th>
+    <th style="text-align:right">Долг</th>
+    <th>Статус</th>
+  </tr>`;
+
+  if (!list.length) {
+    document.getElementById("znOplatyTbody").innerHTML =
+      `<tr><td colspan="9" style="text-align:center;color:var(--text2);padding:20px">Нет данных</td></tr>`;
+    return;
+  }
+
+  // Дебиторка бўйича камайиш тартибида
+  list = [...list].sort((a,b) => b.debt - a.debt);
+
+  document.getElementById("znOplatyTbody").innerHTML = list.map(z => {
+    const badge = z.status === "full"    ? '<span class="zn-debt-badge full">Оплачен</span>'  :
+                  z.status === "partial" ? '<span class="zn-debt-badge partial">Частично</span>' :
+                  z.status === "none"    ? '<span class="zn-debt-badge none">Не оплачен</span>' : "—";
+    const pctW  = z.pct > 0 ? `<div class="zn-progress-bar"><div class="zn-progress-fill" style="width:${z.pct}%;background:${z.status==="full"?"#2ecc71":z.status==="partial"?"#f5a623":"#ff4757"}"></div></div>` : "";
+    return `<tr>
+      <td style="font-weight:700;font-size:11px">${z.zn}</td>
+      <td style="font-size:11px">${z.client}</td>
+      <td style="font-size:10px;color:var(--text2)">${z.org.replace("ADM-ASTER MCHJ Qk","ADM").replace("ASTER AUTO TRADE ИП ООО","AAT")}</td>
+      <td style="text-align:right;color:#4f7cff">${z.nal>0?fmt(z.nal):"—"}</td>
+      <td style="text-align:right;color:#9b59b6">${z.card>0?fmt(z.card):"—"}</td>
+      <td style="text-align:right;font-weight:700">${fmt(z.total)}</td>
+      <td style="text-align:right;color:var(--text2)">${z.znSum>0?fmt(z.znSum):"—"}</td>
+      <td style="text-align:right;color:${z.debt>0?"#ff4757":"#2ecc71"};font-weight:700">${z.debt>0?fmt(z.debt):"✅"}</td>
+      <td>${badge}${pctW}</td>
+    </tr>`;
+  }).join("");
+}
 
 </script>
 </body>
