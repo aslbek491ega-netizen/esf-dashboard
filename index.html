@@ -2227,13 +2227,14 @@ async function fetchZN(){
 }
 
 function openZNPage(){
-  setTimeout(()=>fetchOplaty(),1500);
   closeNomenclaturePage();
   document.getElementById("znPage").classList.remove("hidden");
   setTimeout(()=>fetchChanges(), 1500);
   if(!znRows.length)
-    fetchZN().catch(e=>document.getElementById("znErr").textContent="Ошибка загрузки ЗН: "+e.message);
-  else renderZN();
+    fetchZN()
+      .then(()=>fetchOplaty())
+      .catch(e=>document.getElementById("znErr").textContent="Ошибка загрузки ЗН: "+e.message);
+  else{renderZN();fetchOplaty();}
 }
 function closeZNPage(){document.getElementById("znPage").classList.add("hidden");}
 
