@@ -959,12 +959,15 @@ function buildSidebar(){
           page.style.display = "block";
           closeNomenclaturePage();
           if (!znRows.length) {
-            fetchZN().catch(err => {
-              const box = document.getElementById("znErr");
-              if (box) box.textContent = "Ошибка загрузки ЗН: " + err.message;
-            });
+            fetchZN()
+              .then(()=>fetchOplaty())
+              .catch(err => {
+                const box = document.getElementById("znErr");
+                if (box) box.textContent = "Ошибка загрузки ЗН: " + err.message;
+              });
           } else {
             renderZN();
+            fetchOplaty();
           }
         } catch (err) {
           alert("Не удалось открыть раздел «Заказ-наряды»: " + err.message);
