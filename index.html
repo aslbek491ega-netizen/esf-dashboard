@@ -329,6 +329,15 @@ tr.ch-deleted td{background:rgba(255,50,50,.07);}
 .zn-dbadge.none{background:rgba(255,71,87,.15);color:#ff4757;}
 .zn-pbar{height:5px;border-radius:3px;background:var(--panel2);overflow:hidden;margin-top:3px;}
 .zn-pfill{height:100%;border-radius:3px;}.zn-zo-click{cursor:pointer;} .zn-zo-click:hover td{background:rgba(79,124,255,.10);}
+.zo-filter-bar{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap;}
+.zo-filter-bar select{padding:4px 10px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:11px;cursor:pointer;}
+.zo-filter-bar label{font-size:11px;color:var(--text2);}
+.zo-pag{display:flex;gap:4px;align-items:center;justify-content:space-between;margin-top:10px;flex-wrap:wrap;}
+.zo-pag-info{font-size:11px;color:var(--text2);}
+.zo-pag-btns{display:flex;gap:3px;}
+.zo-pag-btns button{padding:3px 9px;border-radius:6px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:11px;cursor:pointer;min-width:28px;}
+.zo-pag-btns button.active{background:#4f7cff;color:#fff;border-color:#4f7cff;}
+.zo-pag-btns button:hover:not(.active){background:rgba(255,255,255,.08);}
 
 </style>
 
@@ -716,12 +725,27 @@ tr.ch-deleted td{background:rgba(255,50,50,.07);}
         <div class="zn-oplaty-grid" id="znOKpi"></div>
         <div class="zn-otabs">
           <div class="zn-otab active" onclick="zoTab('debt')">🔴 Дебиторка</div>
+          <div class="zn-otab" onclick="zoTab('credit')">💜 Кредиторка</div>
           <div class="zn-otab" onclick="zoTab('close')">✅ Можно закрыть</div>
           <div class="zn-otab" onclick="zoTab('partial')">🟡 Частично</div>
           <div class="zn-otab" onclick="zoTab('all')">📋 Все</div>
         </div>
-        <div style="overflow-x:auto;max-height:380px;overflow-y:auto;">
+        <div class="zo-filter-bar">
+          <label>Тип оплаты:</label>
+          <select id="zoFType" onchange="_zoRerender()">
+            <option value="">Все</option>
+            <option value="nal">💵 Только нал.</option>
+            <option value="card">💳 Только карта</option>
+            <option value="mixed">🔀 Смешанные</option>
+          </select>
+          <span id="zoFInfo" style="font-size:11px;color:var(--text2);margin-left:4px;"></span>
+        </div>
+        <div style="overflow-x:auto;">
           <table class="zn-dt"><thead id="znDTH"></thead><tbody id="znDTB"></tbody></table>
+        </div>
+        <div class="zo-pag">
+          <span id="zoPagInfo" class="zo-pag-info"></span>
+          <div class="zo-pag-btns" id="zoPagBtns"></div>
         </div>
       </div></div>
     </div>
@@ -2831,25 +2855,73 @@ function _zoRender(){
     document.getElementById('znAlertCS').textContent='Показываются только ЗН, у которых статус ещё не «Закрыт»';
   } else ac.style.display='none';
 
-  zoTab(_zoTab);
+  _zoCurPage=1;
+  _zoRerender();
 }
+
+let _zoCurPage=1;
+const _zoPageSize=20;
+let _zoFiltered=[];
 
 function zoTab(tab){
   _zoTab=tab;
   document.querySelectorAll('.zn-otab').forEach((el,i)=>{
-    el.classList.toggle('active',['debt','close','partial','all'][i]===tab);
+    el.classList.toggle('active',['debt','credit','close','partial','all'][i]===tab);
   });
+  _zoCurPage=1;
+  _zoRerender();
+}
+
+function _zoRerender(){
   let list=[...(_zoCache||[])];
-  if(tab==='debt') list=list.filter(z=>z.debt>0);
-  else if(tab==='close') list=list.filter(z=>z.canClose); // КРИТИЧНО: статус обязательно НЕ «Закрыт»
-  else if(tab==='partial') list=list.filter(z=>z.status==='partial');
-  else if(tab==='all') list=list.filter(z=>!z.orphan || z.total>0);
+  if(_zoTab==='debt')    list=list.filter(z=>z.debt>0);
+  else if(_zoTab==='credit')  list=list.filter(z=>z.credit>0);
+  else if(_zoTab==='close')   list=list.filter(z=>z.canClose);
+  else if(_zoTab==='partial') list=list.filter(z=>z.status==='partial');
+  else if(_zoTab==='all')     list=list.filter(z=>!z.orphan||z.total>0);
+
+  // Тип оплаты фильтри
+  const ft=document.getElementById('zoFType')?.value||'';
+  if(ft==='nal')   list=list.filter(z=>z.nal>0&&z.card===0);
+  else if(ft==='card')  list=list.filter(z=>z.card>0&&z.nal===0);
+  else if(ft==='mixed') list=list.filter(z=>z.nal>0&&z.card>0);
+
   list.sort((a,b)=>{
-    if(tab==='debt') return b.debt-a.debt;
-    if(tab==='close') return b.total-a.total;
-    if(tab==='partial') return b.debt-a.debt;
+    if(_zoTab==='debt'||_zoTab==='partial') return b.debt-a.debt;
+    if(_zoTab==='credit') return b.credit-a.credit;
     return b.total-a.total;
   });
+
+  _zoFiltered=list;
+  const info=document.getElementById('zoFInfo');
+  if(info) info.textContent=list.length+' та ЗН';
+  _zoRenderPage();
+}
+
+function _zoRenderPage(){
+  const list=_zoFiltered;
+  const total=list.length;
+  const pages=Math.max(1,Math.ceil(total/_zoPageSize));
+  _zoCurPage=Math.min(Math.max(1,_zoCurPage),pages);
+  const from=(_zoCurPage-1)*_zoPageSize;
+  const pageRows=list.slice(from,from+_zoPageSize);
+
+  // Пагинация info
+  const pi=document.getElementById('zoPagInfo');
+  if(pi) pi.textContent=total>0?`Кўрсатиляпти: ${from+1}–${Math.min(from+_zoPageSize,total)} / ${total} та ЗН`:'';
+
+  // Пагинация тугмалари
+  const pb=document.getElementById('zoPagBtns');
+  if(pb&&pages>1){
+    const btns=[];
+    if(_zoCurPage>1) btns.push(`<button onclick="_zoCurPage--;_zoRenderPage()">‹</button>`);
+    const s=Math.max(1,_zoCurPage-2), e=Math.min(pages,s+4);
+    if(s>1) btns.push(`<button onclick="_zoCurPage=1;_zoRenderPage()">1</button>${s>2?'<button disabled style="border:none;background:none;color:var(--text2)">…</button>':''}`);
+    for(let i=s;i<=e;i++) btns.push(`<button onclick="_zoCurPage=${i};_zoRenderPage()" class="${i===_zoCurPage?'active':''}">${i}</button>`);
+    if(e<pages) btns.push(`${e<pages-1?'<button disabled style="border:none;background:none;color:var(--text2)">…</button>':''}<button onclick="_zoCurPage=${pages};_zoRenderPage()">${pages}</button>`);
+    if(_zoCurPage<pages) btns.push(`<button onclick="_zoCurPage++;_zoRenderPage()">›</button>`);
+    pb.innerHTML=btns.join('');
+  } else if(pb) pb.innerHTML='';
 
   const fmt=n=>Number(n||0).toLocaleString('ru-RU',{maximumFractionDigits:0});
   document.getElementById('znDTH').innerHTML=`<tr>
@@ -2857,11 +2929,11 @@ function zoTab(tab){
     <th style="text-align:right">Нал.</th><th style="text-align:right">Карта</th>
     <th style="text-align:right">Оплачено</th><th style="text-align:right">Сумма ЗН</th>
     <th style="text-align:right">Долг</th><th>Оплата</th></tr>`;
-  if(!list.length){
+  if(!pageRows.length){
     document.getElementById('znDTB').innerHTML=`<tr><td colspan="9" style="text-align:center;color:var(--text2);padding:12px">Нет данных</td></tr>`;
     return;
   }
-  document.getElementById('znDTB').innerHTML=list.map(z=>{
+  document.getElementById('znDTB').innerHTML=pageRows.map(z=>{
     const badge=z.status==='overpaid'?'<span class="zn-dbadge full">Переплата</span>':
                 z.status==='full'?'<span class="zn-dbadge full">Оплачен</span>':
                 z.status==='partial'?'<span class="zn-dbadge partial">Частично</span>':
@@ -2887,6 +2959,8 @@ function zoTab(tab){
     };
   });
 }
+
+function zoTab_compat(tab){zoTab(tab);}
 </script>
 </body>
 </html>
