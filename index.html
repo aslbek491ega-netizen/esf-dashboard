@@ -304,12 +304,12 @@ tr.ch-deleted td{background:rgba(255,50,50,.07);}
 
 
 /* ===== ОПЛАТЫ ===== */
-.zn-oplaty-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;}
+.zn-oplaty-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:12px;}
 .zn-ok{background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;}
 .zn-ok .lbl{font-size:10px;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;}
 .zn-ok .val{font-size:20px;font-weight:800;margin-bottom:2px;}
 .zn-ok .sub{font-size:11px;color:var(--text2);}
-.zn-ok.blue .val{color:#4f7cff;}.zn-ok.red .val{color:#ff4757;}.zn-ok.green .val{color:#2ecc71;}.zn-ok.amber .val{color:#f5a623;}
+.zn-ok.blue .val{color:#4f7cff;}.zn-ok.red .val{color:#ff4757;}.zn-ok.green .val{color:#2ecc71;}.zn-ok.amber .val{color:#f5a623;}.zn-ok.purple .val{color:#b56cff;}
 .zn-alert-d{background:linear-gradient(90deg,#160a00,#2a1500);border:1px solid #f5a623;border-radius:10px;padding:12px 16px;margin-bottom:12px;display:none;}
 .zn-alert-d .at{font-size:13px;font-weight:700;color:#f5a623;}
 .zn-alert-d .as{font-size:11px;color:#d4a55a;margin-top:3px;}
@@ -320,15 +320,15 @@ tr.ch-deleted td{background:rgba(255,50,50,.07);}
 .zn-otab{padding:5px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--panel2);color:var(--text2);transition:all .15s;}
 .zn-otab.active{background:#4f7cff;color:#fff;border-color:#4f7cff;}
 .zn-dt{width:100%;border-collapse:collapse;font-size:12px;}
-.zn-dt th{text-align:left;padding:7px 10px;background:var(--panel2);color:var(--text2);font-weight:600;position:sticky;top:0;z-index:1;}
-.zn-dt td{padding:7px 10px;border-bottom:1px solid var(--border);vertical-align:middle;}
-.zn-dt tr:hover td{background:rgba(79,124,255,.06);}
+.zn-dt th{text-align:left;padding:5px 8px;background:var(--panel2);color:var(--text2);font-weight:600;position:sticky;top:0;z-index:1;}
+.zn-dt td{padding:5px 8px;border-bottom:1px solid var(--border);vertical-align:middle;}
+.zn-dt tr:hover td{background:rgba(79,124,255,.10);cursor:pointer;}
 .zn-dbadge{display:inline-block;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:700;}
 .zn-dbadge.full{background:rgba(46,204,113,.15);color:#2ecc71;}
 .zn-dbadge.partial{background:rgba(245,166,35,.15);color:#f5a623;}
 .zn-dbadge.none{background:rgba(255,71,87,.15);color:#ff4757;}
 .zn-pbar{height:5px;border-radius:3px;background:var(--panel2);overflow:hidden;margin-top:3px;}
-.zn-pfill{height:100%;border-radius:3px;}
+.zn-pfill{height:100%;border-radius:3px;}.zn-zo-click{cursor:pointer;} .zn-zo-click:hover td{background:rgba(79,124,255,.10);}
 
 </style>
 
@@ -716,7 +716,7 @@ tr.ch-deleted td{background:rgba(255,50,50,.07);}
         <div class="zn-oplaty-grid" id="znOKpi"></div>
         <div class="zn-otabs">
           <div class="zn-otab active" onclick="zoTab('debt')">🔴 Дебиторка</div>
-          <div class="zn-otab" onclick="zoTab('close')">✅ Закрыть</div>
+          <div class="zn-otab" onclick="zoTab('close')">✅ Можно закрыть</div>
           <div class="zn-otab" onclick="zoTab('partial')">🟡 Частично</div>
           <div class="zn-otab" onclick="zoTab('all')">📋 Все</div>
         </div>
@@ -2110,7 +2110,17 @@ function znRenderTable(rows){
 }
 
 function znOpenModal(row){
+  if(!row) return;
   const num=znField(row,"Номер")||"Без номера";
+  const status=znField(row,"Состояние заказ-наряда")||"—";
+  const znSum=znTotal(row);
+  const payment=(typeof zoGetByZN==='function') ? zoGetByZN(num) : null;
+  const paid=payment?.total||0;
+  const debt=Math.max(0,znSum-paid);
+  const credit=Math.max(0,paid-znSum);
+  const statusLower=status.toLowerCase();
+  const canClose=paid+0.01>=znSum && znSum>0 && statusLower!=="закрыт";
+
   document.getElementById("znModalTitle").textContent=`Заказ-наряд № ${num}`;
   document.getElementById("znModalSub").textContent=[
     znField(row,"Дата"),
@@ -2119,18 +2129,24 @@ function znOpenModal(row){
   ].filter(Boolean).join(" · ");
 
   const visibleHeaders=znHeaders.filter(h=>h!=="Автор");
-  document.getElementById("znModalBody").innerHTML=
-    `<div class="zn-detail-item"><div class="k">Оплата</div><div class="v">${znEscape(znPaymentClass(znField(row,"Вид ремонта"))||"—")}</div></div>`+
-    visibleHeaders.map(h=>{
-      let v=znField(row,h);
-      if(["Сумма деталей","Сумма работ"].includes(h)&&v)v=znMoney(znNum(v));
-      return `<div class="zn-detail-item"><div class="k">${znEscape(h)}</div><div class="v">${znEscape(v||"—")}</div></div>`;
-    }).join("")+
-    `<div class="zn-detail-item">
-      <div class="k">Общая сумма ЗН</div>
-      <div class="v">${znMoney(znTotal(row))}</div>
-    </div>`;
+  let html=
+    `<div class="zn-detail-item"><div class="k">Статус ЗН</div><div class="v">${znEscape(status)}</div></div>`+
+    `<div class="zn-detail-item"><div class="k">Оплата</div><div class="v">${paid>0?znMoney(paid):"0 сум"}</div></div>`+
+    `<div class="zn-detail-item"><div class="k">Сумма ЗН</div><div class="v">${znMoney(znSum)}</div></div>`+
+    `<div class="zn-detail-item"><div class="k">Дебиторка</div><div class="v">${debt>0?znMoney(debt):"—"}</div></div>`+
+    `<div class="zn-detail-item"><div class="k">Переплата / кредиторка</div><div class="v">${credit>0?znMoney(credit):"—"}</div></div>`+
+    `<div class="zn-detail-item"><div class="k">Можно закрыть</div><div class="v">${canClose?"✅ Да":"—"}</div></div>`;
 
+  html+=visibleHeaders.map(h=>{
+    let v=znField(row,h);
+    if(["Сумма деталей","Сумма работ"].includes(h)&&v)v=znMoney(znNum(v));
+    return `<div class="zn-detail-item"><div class="k">${znEscape(h)}</div><div class="v">${znEscape(v||"—")}</div></div>`;
+  }).join("");
+
+  if(payment){
+    html+=`<div class="zn-detail-item" style="grid-column:1/-1"><div class="k">Платежи по ЗН</div><div class="v">Наличные: ${znMoney(payment.nal)} · Карта: ${znMoney(payment.card)} · Всего: ${znMoney(payment.total)}</div></div>`;
+  }
+  document.getElementById("znModalBody").innerHTML=html;
   document.getElementById("znModal").classList.remove("hidden");
 }
 function znCloseModal(){document.getElementById("znModal").classList.add("hidden");}
@@ -2247,8 +2263,9 @@ document.addEventListener("DOMContentLoaded",()=>{
   };
   document.getElementById("znRefreshBtn").onclick=()=>{
     fetchChanges();
-    fetchZN().catch(e=>document.getElementById("znErr").textContent="Ошибка загрузки ЗН: "+e.message);
-    fetchOplaty();
+    fetchZN()
+      .then(()=>fetchOplaty())
+      .catch(e=>document.getElementById("znErr").textContent="Ошибка загрузки ЗН: "+e.message);
   };
 
   ["znSearch","znFrom","znTo"].forEach(id=>{
@@ -2670,75 +2687,137 @@ document.addEventListener("click", e => {
 // ── ОПЛАТА ПО ЗН ──────────────────────────────────────────
 let _opData=[], _zoCache=[], _zoTab='debt';
 
+function zoNorm(v){
+  return String(v??"").trim().toLowerCase().replace(/\s+/g,"");
+}
+function zoAmount(v){
+  let s=String(v??"").replace(/\s/g,"").replace(/\u00a0/g,"").trim();
+  if(!s) return 0;
+  if(s.includes(",")&&s.includes(".")){
+    if(s.lastIndexOf(",")>s.lastIndexOf(".")) s=s.replace(/\./g,"").replace(",",".");
+    else s=s.replace(/,/g,"");
+  }else if(s.includes(",")) s=s.replace(",",".");
+  const n=parseFloat(s); return Number.isFinite(n)?n:0;
+}
+function zoIsCash(type){
+  const t=String(type||"").toLowerCase();
+  return t.includes("налич") || t.includes("касс");
+}
+function zoGetByZN(num){
+  const key=zoNorm(num);
+  const z=_zoCache.find(x=>zoNorm(x.zn)===key);
+  return z||null;
+}
+function zoGetZNRow(num){
+  const key=zoNorm(num);
+  return (typeof znRows!=='undefined'?znRows:[]).find(r=>zoNorm(znField(r,'Номер'))===key)||null;
+}
+
 async function fetchOplaty(){
   try{
-    document.getElementById('znOplatyLoad').style.display='block';
+    const load=document.getElementById('znOplatyLoad');
+    if(load) load.style.display='block';
     const url=`https://docs.google.com/spreadsheets/d/${ZN_SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(OPLATY_SHEET_NAME)}&t=${Date.now()}`;
     const res=await fetch(url,{cache:'no-store'});
-    if(!res.ok){document.getElementById('znOplatyLoad').style.display='none';return;}
+    if(!res.ok) throw new Error(`Google Sheets: ${res.status}`);
     const txt=await res.text();
     const s=txt.indexOf('{'),e=txt.lastIndexOf('}');
-    if(s<0){document.getElementById('znOplatyLoad').style.display='none';return;}
+    if(s<0||e<0) throw new Error('Не удалось прочитать лист «ОПЛАТЫ».');
     const d=JSON.parse(txt.slice(s,e+1));
     const rows=(d.table?.rows||[]).map(r=>(r.c||[]).map(c=>c?.f??c?.v??''));
-    // 0:ЗН 1:Дата 2:Контрагент 3:Орг 4:Тип 5:Вид 6:Сумма 7:Касса 8:Номер 9:Файл
-    _opData=rows.slice(1).filter(r=>r[0]).map(r=>({
-      zn:String(r[0]||''),date:String(r[1]||''),client:String(r[2]||''),
-      org:String(r[3]||''),type:String(r[4]||''),
-      sum:parseFloat(String(r[6]||0).replace(/\s/g,'').replace(',','.'))||0,
-    }));
-    document.getElementById('znOplatyLoad').style.display='none';
+
+    // Текущий формат ОПЛАТЫ: 0 ЗН, 1 Дата, 2 Контрагент, 3 Орг, 4 Тип, 5 Вид, 6 Сумма, 7 Касса, 8 Номер, 9 Файл.
+    // Для совместимости также пытаемся найти нужные колонки по заголовкам.
+    const cols=(d.table?.cols||[]).map(c=>String(c.label||c.id||'').trim());
+    const header=rows[0]||[];
+    const findCol=(names,fallback)=>{
+      for(const n of names){
+        const i=cols.findIndex(x=>zoNorm(x)===zoNorm(n));
+        if(i>=0)return i;
+        const j=header.findIndex(x=>zoNorm(x)===zoNorm(n));
+        if(j>=0)return j;
+      }
+      return fallback;
+    };
+    const iZN=findCol(['ЗН','№ ЗН','Номер ЗН','Заказ-наряд'],0);
+    const iDate=findCol(['Дата','Дата оплаты'],1);
+    const iClient=findCol(['Контрагент','Покупатель','Клиент'],2);
+    const iOrg=findCol(['Организация','Орг'],3);
+    const iType=findCol(['Тип','Вид оплаты','Способ оплаты'],4);
+    const iSum=findCol(['Сумма','Сумма оплаты','Итого'],6);
+
+    _opData=rows.slice(1).filter(r=>String(r[iZN]||'').trim()).map(r=>({
+      zn:String(r[iZN]||'').trim(),date:String(r[iDate]||''),client:String(r[iClient]||''),
+      org:String(r[iOrg]||''),type:String(r[iType]||''),sum:zoAmount(r[iSum])
+    })).filter(x=>x.sum>0);
+    if(load) load.style.display='none';
     _zoRender();
   }catch(err){
     console.warn('fetchOplaty:',err);
-    document.getElementById('znOplatyLoad').style.display='none';
+    const load=document.getElementById('znOplatyLoad');
+    if(load){load.textContent='⚠️ Не удалось загрузить «ОПЛАТЫ»: '+err.message;load.style.display='block';}
   }
 }
 
 function _zoRender(){
-  // ЗН буйича гурухлаш
-  const byZN={};
-  _opData.forEach(op=>{
-    if(!byZN[op.zn]) byZN[op.zn]={zn:op.zn,client:op.client,org:op.org,nal:0,card:0,total:0};
-    if(op.type==='Наличные') byZN[op.zn].nal+=op.sum;
-    else byZN[op.zn].card+=op.sum;
-    byZN[op.zn].total+=op.sum;
+  // Сначала создаём полный список ИЗ ЗНАРЯД. Это важно: даже полностью неоплаченный ЗН
+  // должен попасть в дебиторку. Контрагент всегда берётся из ЗНАРЯД, а не из ОПЛАТЫ.
+  const znMap={};
+  (typeof znRows!=='undefined'?znRows:[]).forEach(r=>{
+    const num=znField(r,'Номер');
+    if(!num)return;
+    znMap[zoNorm(num)]={
+      zn:num,
+      client:znField(r,'Контрагент'),
+      org:znField(r,'Организация'),
+      state:znField(r,'Состояние заказ-наряда'),
+      row:r,
+      znSum:znTotal(r),nal:0,card:0,total:0
+    };
   });
 
-  // ЗН реестридан суммаларни олиш
-  const znSums={};
-  if(typeof znRows!=='undefined'){
-    znRows.forEach(r=>{
-      const num=znField(r,'Номер');
-      const d=parseFloat(String(znField(r,'Сумма деталей')||0).replace(/\s/g,'').replace(',','.'))||0;
-      const w=parseFloat(String(znField(r,'Сумма работ')||0).replace(/\s/g,'').replace(',','.'))||0;
-      if(num) znSums[num]=d+w;
-    });
-  }
+  // Платежи привязываем к номеру ЗН. Если платеж есть, но ЗН сейчас не найден,
+  // показываем его в «Все» как отдельный внешний платёж, не смешивая с дебиторкой.
+  _opData.forEach(op=>{
+    const key=zoNorm(op.zn);
+    if(!znMap[key]){
+      znMap[key]={zn:op.zn,client:'',org:op.org,state:'',row:null,znSum:0,nal:0,card:0,total:0,orphan:true};
+    }
+    const z=znMap[key];
+    if(zoIsCash(op.type)) z.nal+=op.sum;
+    else z.card+=op.sum;
+    z.total+=op.sum;
+  });
 
-  const list=Object.values(byZN).map(z=>{
-    const znSum=znSums[z.zn]||0;
-    const debt=znSum>0?Math.max(0,znSum-z.total):0;
-    const pct=znSum>0?Math.min(100,Math.round(z.total/znSum*100)):0;
-    const st=znSum===0?'unknown':z.total>=znSum?'full':z.total>0?'partial':'none';
-    return{...z,znSum,debt,pct,status:st};
+  const list=Object.values(znMap).map(z=>{
+    const debt=Math.max(0,z.znSum-z.total);
+    const credit=Math.max(0,z.total-z.znSum);
+    const pct=z.znSum>0?Math.min(100,Math.round(z.total/z.znSum*100)):0;
+    let status='none';
+    if(z.znSum>0 && z.total>=z.znSum) status=credit>0?'overpaid':'full';
+    else if(z.total>0) status='partial';
+    const closed=zoNorm(z.state)==='закрыт';
+    const canClose=status==='full' && !closed;
+    return {...z,debt,credit,pct,status,closed,canClose};
   });
 
   _zoCache=list;
-  const fmt=n=>n.toLocaleString('ru-RU',{maximumFractionDigits:0});
+  const fmt=n=>Number(n||0).toLocaleString('ru-RU',{maximumFractionDigits:0});
   const totPaid=list.reduce((a,z)=>a+z.total,0);
   const totDebt=list.reduce((a,z)=>a+z.debt,0);
-  const canClose=list.filter(z=>z.status==='full').length;
+  const totCredit=list.reduce((a,z)=>a+z.credit,0);
+  const canClose=list.filter(z=>z.canClose).length;
   const hasDebt=list.filter(z=>z.debt>0).length;
+  const partial=list.filter(z=>z.status==='partial').length;
+  const overpaid=list.filter(z=>z.status==='overpaid').length;
 
-  // KPI
   document.getElementById('znOKpi').innerHTML=`
     <div class="zn-ok blue"><div class="lbl">Получено</div><div class="val">${fmt(totPaid)}</div><div class="sub">${_opData.length} платежей</div></div>
     <div class="zn-ok red"><div class="lbl">Дебиторка</div><div class="val">${fmt(totDebt)}</div><div class="sub">${hasDebt} ЗН</div></div>
-    <div class="zn-ok green"><div class="lbl">Можно закрыть</div><div class="val">${canClose}</div><div class="sub">ЗН оплачены полностью</div></div>
-    <div class="zn-ok amber"><div class="lbl">Частично</div><div class="val">${list.filter(z=>z.status==='partial').length}</div><div class="sub">ЗН</div></div>`;
+    <div class="zn-ok green"><div class="lbl">Можно закрыть</div><div class="val">${canClose}</div><div class="sub">Оплачены, но статус не «Закрыт»</div></div>
+    <div class="zn-ok amber"><div class="lbl">Частично</div><div class="val">${partial}</div><div class="sub">ЗН</div></div>
+    <div class="zn-ok purple"><div class="lbl">Кредиторка</div><div class="val">${fmt(totCredit)}</div><div class="sub">${overpaid} ЗН с переплатой</div></div>`;
 
-  // Огоҳлантириш
   const ad=document.getElementById('znAlertD');
   const ac=document.getElementById('znAlertC');
   if(totDebt>0){
@@ -2749,7 +2828,7 @@ function _zoRender(){
   if(canClose>0){
     ac.style.display='block';
     document.getElementById('znAlertCT').textContent=`✅ ${canClose} ЗН оплачены полностью — можно закрыть`;
-    document.getElementById('znAlertCS').textContent='Статус ЗН ещё не «Закрыт», но оплата поступила полностью';
+    document.getElementById('znAlertCS').textContent='Показываются только ЗН, у которых статус ещё не «Закрыт»';
   } else ac.style.display='none';
 
   zoTab(_zoTab);
@@ -2760,40 +2839,54 @@ function zoTab(tab){
   document.querySelectorAll('.zn-otab').forEach((el,i)=>{
     el.classList.toggle('active',['debt','close','partial','all'][i]===tab);
   });
-  if(!_zoCache) return;
-  let list=[..._zoCache];
-  if(tab==='debt')    list=list.filter(z=>z.debt>0);
-  else if(tab==='close')   list=list.filter(z=>z.status==='full');
+  let list=[...(_zoCache||[])];
+  if(tab==='debt') list=list.filter(z=>z.debt>0);
+  else if(tab==='close') list=list.filter(z=>z.canClose); // КРИТИЧНО: статус обязательно НЕ «Закрыт»
   else if(tab==='partial') list=list.filter(z=>z.status==='partial');
-  list.sort((a,b)=>b.debt-a.debt);
-  const fmt=n=>n.toLocaleString('ru-RU',{maximumFractionDigits:0});
+  else if(tab==='all') list=list.filter(z=>!z.orphan || z.total>0);
+  list.sort((a,b)=>{
+    if(tab==='debt') return b.debt-a.debt;
+    if(tab==='close') return b.total-a.total;
+    if(tab==='partial') return b.debt-a.debt;
+    return b.total-a.total;
+  });
+
+  const fmt=n=>Number(n||0).toLocaleString('ru-RU',{maximumFractionDigits:0});
   document.getElementById('znDTH').innerHTML=`<tr>
-    <th>№ ЗН</th><th>Контрагент</th><th>Орг.</th>
+    <th>№ ЗН</th><th>Контрагент</th><th>Статус ЗН</th>
     <th style="text-align:right">Нал.</th><th style="text-align:right">Карта</th>
-    <th style="text-align:right">Итого</th><th style="text-align:right">Сумма ЗН</th>
-    <th style="text-align:right">Долг</th><th>Статус</th></tr>`;
+    <th style="text-align:right">Оплачено</th><th style="text-align:right">Сумма ЗН</th>
+    <th style="text-align:right">Долг</th><th>Оплата</th></tr>`;
   if(!list.length){
-    document.getElementById('znDTB').innerHTML=`<tr><td colspan="9" style="text-align:center;color:var(--text2);padding:16px">Нет данных</td></tr>`;
+    document.getElementById('znDTB').innerHTML=`<tr><td colspan="9" style="text-align:center;color:var(--text2);padding:12px">Нет данных</td></tr>`;
     return;
   }
   document.getElementById('znDTB').innerHTML=list.map(z=>{
-    const badge=z.status==='full'?'<span class="zn-dbadge full">Оплачен</span>':
+    const badge=z.status==='overpaid'?'<span class="zn-dbadge full">Переплата</span>':
+                z.status==='full'?'<span class="zn-dbadge full">Оплачен</span>':
                 z.status==='partial'?'<span class="zn-dbadge partial">Частично</span>':
-                z.status==='none'?'<span class="zn-dbadge none">Не оплачен</span>':'—';
-    const bar=z.pct>0?`<div class="zn-pbar"><div class="zn-pfill" style="width:${z.pct}%;background:${z.status==='full'?'#2ecc71':z.status==='partial'?'#f5a623':'#ff4757'}"></div></div>`:'';
-    return `<tr>
-      <td style="font-weight:700;font-size:11px">${z.zn}</td>
-      <td style="font-size:11px">${z.client}</td>
-      <td style="font-size:10px;color:var(--text2)">${z.org.replace('ADM-ASTER MCHJ Qk','ADM').replace('ASTER AUTO TRADE ИП ООО','AAT')}</td>
+                '<span class="zn-dbadge none">Не оплачен</span>';
+    const bar=z.znSum>0?`<div class="zn-pbar"><div class="zn-pfill" style="width:${z.pct}%;background:${z.status==='full'||z.status==='overpaid'?'#2ecc71':z.status==='partial'?'#f5a623':'#ff4757'}"></div></div>`:'';
+    const st=znEscape(z.state||'—');
+    return `<tr class="zn-zo-click" data-zo-zn="${znEscape(z.zn)}">
+      <td style="font-weight:700;font-size:11px;white-space:nowrap">${znEscape(z.zn)}</td>
+      <td style="font-size:11px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${znEscape(z.client)}">${znEscape(z.client||'—')}</td>
+      <td style="font-size:10px;color:var(--text2);white-space:nowrap">${st}</td>
       <td style="text-align:right;color:#4f7cff">${z.nal>0?fmt(z.nal):'—'}</td>
       <td style="text-align:right;color:#9b59b6">${z.card>0?fmt(z.card):'—'}</td>
       <td style="text-align:right;font-weight:700">${fmt(z.total)}</td>
       <td style="text-align:right;color:var(--text2)">${z.znSum>0?fmt(z.znSum):'—'}</td>
-      <td style="text-align:right;font-weight:700;color:${z.debt>0?'#ff4757':'#2ecc71'}">${z.debt>0?fmt(z.debt):'✅'}</td>
+      <td style="text-align:right;font-weight:700;color:${z.debt>0?'#ff4757':z.credit>0?'#b56cff':'#2ecc71'}">${z.debt>0?fmt(z.debt):z.credit>0?'+'+fmt(z.credit):'✅'}</td>
       <td>${badge}${bar}</td></tr>`;
   }).join('');
-}
 
+  document.querySelectorAll('#znDTB tr[data-zo-zn]').forEach(tr=>{
+    tr.onclick=()=>{
+      const row=zoGetZNRow(tr.dataset.zoZn);
+      if(row) znOpenModal(row);
+    };
+  });
+}
 </script>
 </body>
 </html>
