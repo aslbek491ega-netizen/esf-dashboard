@@ -316,23 +316,9 @@ tr.ch-deleted td{background:rgba(255,50,50,.07);}
 .zn-alert-c{background:linear-gradient(90deg,#001a08,#002a10);border:1px solid #2ecc71;border-radius:10px;padding:12px 16px;margin-bottom:12px;display:none;}
 .zn-alert-c .at{font-size:13px;font-weight:700;color:#2ecc71;}
 .zn-alert-c .as{font-size:11px;color:#5dba8a;margin-top:3px;}
-.zn-otabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center;}
-.zn-otab{padding:5px 12px;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--panel2);color:var(--text2);transition:all .15s;}
+.zn-otabs{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
+.zn-otab{padding:5px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--panel2);color:var(--text2);transition:all .15s;}
 .zn-otab.active{background:#4f7cff;color:#fff;border-color:#4f7cff;}
-/* Оплата фильтрлар */
-.zo-filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center;}
-.zo-filters select{padding:4px 10px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:11px;cursor:pointer;}
-.zo-filters label{font-size:11px;color:var(--text2);}
-/* Пагинация */
-.zo-pagination{display:flex;gap:6px;align-items:center;justify-content:space-between;margin-top:10px;flex-wrap:wrap;}
-.zo-pagination .zo-pages{display:flex;gap:4px;}
-.zo-pagination button{padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:11px;cursor:pointer;}
-.zo-pagination button.active{background:#4f7cff;color:#fff;border-color:#4f7cff;}
-.zo-pagination button:hover:not(.active){background:var(--panel);}
-.zo-info{font-size:11px;color:var(--text2);}
-/* Компакт жадвал */
-.zn-dt td,.zn-dt th{padding:5px 8px;font-size:11px;}
-.zn-dt th{font-size:10px;}
 .zn-dt{width:100%;border-collapse:collapse;font-size:12px;}
 .zn-dt th{text-align:left;padding:7px 10px;background:var(--panel2);color:var(--text2);font-weight:600;position:sticky;top:0;z-index:1;}
 .zn-dt td{padding:7px 10px;border-bottom:1px solid var(--border);vertical-align:middle;}
@@ -732,39 +718,10 @@ tr.ch-deleted td{background:rgba(255,50,50,.07);}
           <div class="zn-otab active" onclick="zoTab('debt')">🔴 Дебиторка</div>
           <div class="zn-otab" onclick="zoTab('close')">✅ Закрыть</div>
           <div class="zn-otab" onclick="zoTab('partial')">🟡 Частично</div>
-          <div class="zn-otab" onclick="zoTab('credit')">💜 Кредиторка</div>
           <div class="zn-otab" onclick="zoTab('all')">📋 Все</div>
         </div>
-        <!-- Фильтрлар -->
-        <div class="zo-filters">
-          <label>Орг.:</label>
-          <select id="zoFilterOrg" onchange="zoApplyFilters()">
-            <option value="">Все организации</option>
-          </select>
-          <label>Оплата:</label>
-          <select id="zoFilterType" onchange="zoApplyFilters()">
-            <option value="">Все типы</option>
-            <option value="nal">Только наличные</option>
-            <option value="card">Только карта</option>
-            <option value="mixed">Смешанные</option>
-          </select>
-          <span id="zoFilterInfo" class="zo-info"></span>
-        </div>
-        <!-- Жадвал -->
-        <div style="overflow-x:auto;">
+        <div style="overflow-x:auto;max-height:380px;overflow-y:auto;">
           <table class="zn-dt"><thead id="znDTH"></thead><tbody id="znDTB"></tbody></table>
-        </div>
-        <!-- Пагинация -->
-        <div class="zo-pagination">
-          <span id="zoPagInfo" class="zo-info"></span>
-          <div class="zo-pages" id="zoPagPages"></div>
-          <span class="zo-info">
-            <select id="zoPagSize" onchange="zoChangePage(1)" style="padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:11px;">
-              <option value="20">20 / стр.</option>
-              <option value="50">50 / стр.</option>
-              <option value="100">100 / стр.</option>
-            </select>
-          </span>
         </div>
       </div></div>
     </div>
@@ -2775,23 +2732,11 @@ function _zoRender(){
   const hasDebt=list.filter(z=>z.debt>0).length;
 
   // KPI
-  const totNal  = _opData.filter(o=>o.type==='Наличные').reduce((a,o)=>a+o.sum,0);
-  const totCard = _opData.filter(o=>o.type!=='Наличные').reduce((a,o)=>a+o.sum,0);
-  const totCredit = list.reduce((a,z)=>a+(z.total>z.znSum&&z.znSum>0?z.total-z.znSum:0),0);
-  const creditCount = list.filter(z=>z.total>z.znSum&&z.znSum>0).length;
   document.getElementById('znOKpi').innerHTML=`
-    <div class="zn-ok blue" style="cursor:pointer" onclick="zoTab('all')"><div class="lbl">Получено</div><div class="val">${fmt(totPaid)}</div><div class="sub">💵 ${fmt(totNal)} · 💳 ${fmt(totCard)}</div></div>
-    <div class="zn-ok red" style="cursor:pointer" onclick="zoTab('debt')"><div class="lbl">Дебиторка</div><div class="val">${fmt(totDebt)}</div><div class="sub">${hasDebt} ЗН с долгом</div></div>
-    <div class="zn-ok green" style="cursor:pointer" onclick="zoTab('close')"><div class="lbl">Можно закрыть</div><div class="val">${canClose}</div><div class="sub">оплачен, статус не Закрыт</div></div>
-    <div class="zn-ok amber" style="cursor:pointer" onclick="zoTab('partial')"><div class="lbl">Частично</div><div class="val">${list.filter(z=>z.status==='partial').length}</div><div class="sub">ЗН не доплачено</div></div>
-    <div class="zn-ok" style="cursor:pointer;border-color:#9b59b6" onclick="zoTab('credit')"><div class="lbl" style="color:#9b59b6">Кредиторка</div><div class="val" style="color:#9b59b6">${fmt(totCredit)}</div><div class="sub">${creditCount} ЗН с переплатой</div></div>`;
-  // Орг фильтрини тўлдириш
-  const orgs=[...new Set(list.map(z=>z.org.replace('ADM-ASTER MCHJ Qk','ADM').replace('ASTER AUTO TRADE ИП ООО','AAT').replace('ASTER AUTO TRADE ИП ОС','AAT')))].sort();
-  const orgSel=document.getElementById('zoFilterOrg');
-  const curOrg=orgSel.value;
-  orgSel.innerHTML='<option value="">Все организации</option>'+orgs.map(o=>`<option value="${o}"${o===curOrg?' selected':''}>${o}</option>`).join('');
-  // Кредиторка учун tab
-  window._zoCredit=list.filter(z=>z.total>z.znSum&&z.znSum>0);
+    <div class="zn-ok blue"><div class="lbl">Получено</div><div class="val">${fmt(totPaid)}</div><div class="sub">${_opData.length} платежей</div></div>
+    <div class="zn-ok red"><div class="lbl">Дебиторка</div><div class="val">${fmt(totDebt)}</div><div class="sub">${hasDebt} ЗН</div></div>
+    <div class="zn-ok green"><div class="lbl">Можно закрыть</div><div class="val">${canClose}</div><div class="sub">ЗН оплачены полностью</div></div>
+    <div class="zn-ok amber"><div class="lbl">Частично</div><div class="val">${list.filter(z=>z.status==='partial').length}</div><div class="sub">ЗН</div></div>`;
 
   // Огоҳлантириш
   const ad=document.getElementById('znAlertD');
@@ -2807,120 +2752,46 @@ function _zoRender(){
     document.getElementById('znAlertCS').textContent='Статус ЗН ещё не «Закрыт», но оплата поступила полностью';
   } else ac.style.display='none';
 
-  _zoCurPage=1;
-  zoApplyFilters();
+  zoTab(_zoTab);
 }
-
-let _zoCurPage=1;
-let _zoFilteredList=[];
 
 function zoTab(tab){
   _zoTab=tab;
   document.querySelectorAll('.zn-otab').forEach((el,i)=>{
     el.classList.toggle('active',['debt','close','partial','all'][i]===tab);
   });
-  _zoCurPage=1;
-  zoApplyFilters();
-}
-
-function zoApplyFilters(){
   if(!_zoCache) return;
   let list=[..._zoCache];
-
-  // Tab filtri
-  if(_zoTab==='debt')    list=list.filter(z=>z.debt>0);
-  else if(_zoTab==='close')   list=list.filter(z=>z.status==='full');
-  else if(_zoTab==='partial') list=list.filter(z=>z.status==='partial');
-  else if(_zoTab==='credit')  list=window._zoCredit||[];
-
-  // Org filtri
-  const orgF=document.getElementById('zoFilterOrg')?.value||'';
-  if(orgF) list=list.filter(z=>z.org.replace('ADM-ASTER MCHJ Qk','ADM').replace('ASTER AUTO TRADE ИП ООО','AAT').replace('ASTER AUTO TRADE ИП ОС','AAT')===orgF);
-
-  // Type filtri
-  const typeF=document.getElementById('zoFilterType')?.value||'';
-  if(typeF==='nal')    list=list.filter(z=>z.nal>0&&z.card===0);
-  else if(typeF==='card')   list=list.filter(z=>z.card>0&&z.nal===0);
-  else if(typeF==='mixed')  list=list.filter(z=>z.nal>0&&z.card>0);
-
-  // Saralash
-  list.sort((a,b)=>b.debt-a.debt||b.total-a.total);
-
-  _zoFilteredList=list;
-  document.getElementById('zoFilterInfo').textContent=`${list.length} та ЗН`;
-  zoRenderPage(_zoCurPage);
-}
-
-function zoChangePage(p){
-  _zoCurPage=p;
-  zoRenderPage(p);
-}
-
-function zoRenderPage(page){
+  if(tab==='debt')    list=list.filter(z=>z.debt>0);
+  else if(tab==='close')   list=list.filter(z=>z.status==='full');
+  else if(tab==='partial') list=list.filter(z=>z.status==='partial');
+  list.sort((a,b)=>b.debt-a.debt);
   const fmt=n=>n.toLocaleString('ru-RU',{maximumFractionDigits:0});
-  const list=_zoFilteredList;
-  const pgSize=parseInt(document.getElementById('zoPagSize')?.value||'20');
-  const totalPages=Math.max(1,Math.ceil(list.length/pgSize));
-  page=Math.min(Math.max(1,page),totalPages);
-  _zoCurPage=page;
-
-  const from=(page-1)*pgSize;
-  const pageRows=list.slice(from,from+pgSize);
-
-  // Info
-  document.getElementById('zoPagInfo').textContent=
-    `${list.length} та ЗН · Кўрсатиляпти: ${from+1}–${Math.min(from+pgSize,list.length)}`;
-
-  // Pagination buttons
-  const btns=[];
-  const showPages=5;
-  let start=Math.max(1,page-Math.floor(showPages/2));
-  let end=Math.min(totalPages,start+showPages-1);
-  if(end-start<showPages-1) start=Math.max(1,end-showPages+1);
-  if(start>1) btns.push(`<button onclick="zoChangePage(1)">1</button>${start>2?'<span style="color:var(--text2);padding:0 4px">...</span>':''}`);
-  for(let i=start;i<=end;i++) btns.push(`<button onclick="zoChangePage(${i})" class="${i===page?'active':''}">${i}</button>`);
-  if(end<totalPages) btns.push(`${end<totalPages-1?'<span style="color:var(--text2);padding:0 4px">...</span>':''}<button onclick="zoChangePage(${totalPages})">${totalPages}</button>`);
-  document.getElementById('zoPagPages').innerHTML=btns.join('');
-
-  // Header
   document.getElementById('znDTH').innerHTML=`<tr>
     <th>№ ЗН</th><th>Контрагент</th><th>Орг.</th>
     <th style="text-align:right">Нал.</th><th style="text-align:right">Карта</th>
-    <th style="text-align:right">Оплачено</th><th style="text-align:right">Сумма ЗН</th>
-    <th style="text-align:right">Долг/Перепл.</th><th>Статус</th></tr>`;
-
-  if(!pageRows.length){
+    <th style="text-align:right">Итого</th><th style="text-align:right">Сумма ЗН</th>
+    <th style="text-align:right">Долг</th><th>Статус</th></tr>`;
+  if(!list.length){
     document.getElementById('znDTB').innerHTML=`<tr><td colspan="9" style="text-align:center;color:var(--text2);padding:16px">Нет данных</td></tr>`;
     return;
   }
-
-  document.getElementById('znDTB').innerHTML=pageRows.map(z=>{
-    const orgShort=z.org.replace('ADM-ASTER MCHJ Qk','ADM').replace('ASTER AUTO TRADE ИП ООО','AAT').replace('ASTER AUTO TRADE ИП ОС','AAT').replace('ASTER AUTO TRADE ИП','AAT');
-    const isCredit=z.total>z.znSum&&z.znSum>0;
-    const debtVal=isCredit?-(z.total-z.znSum):z.debt;
-    const badge=z.status==='full'   ?'<span class="zn-dbadge full">✅ Закрыть</span>':
-                isCredit            ?'<span class="zn-dbadge" style="background:rgba(155,89,182,.15);color:#9b59b6">💜 Переплата</span>':
+  document.getElementById('znDTB').innerHTML=list.map(z=>{
+    const badge=z.status==='full'?'<span class="zn-dbadge full">Оплачен</span>':
                 z.status==='partial'?'<span class="zn-dbadge partial">Частично</span>':
-                z.status==='none'   ?'<span class="zn-dbadge none">Не оплачен</span>':
-                z.status==='closed' ?'<span class="zn-dbadge full">Закрыт</span>':'—';
-    const bar=z.pct>0?`<div class="zn-pbar"><div class="zn-pfill" style="width:${Math.min(z.pct,100)}%;background:${isCredit?'#9b59b6':z.status==='full'||z.status==='closed'?'#2ecc71':z.status==='partial'?'#f5a623':'#ff4757'}"></div></div>`:'';
-    return `<tr style="cursor:pointer" onclick="zoOpenZN('${z.zn}')" onmouseover="this.style.background='rgba(79,124,255,.07)'" onmouseout="this.style.background=''">
-      <td style="font-weight:700;color:#4f7cff">${z.zn}</td>
-      <td>${z.client}</td>
-      <td style="color:var(--text2)">${orgShort}</td>
+                z.status==='none'?'<span class="zn-dbadge none">Не оплачен</span>':'—';
+    const bar=z.pct>0?`<div class="zn-pbar"><div class="zn-pfill" style="width:${z.pct}%;background:${z.status==='full'?'#2ecc71':z.status==='partial'?'#f5a623':'#ff4757'}"></div></div>`:'';
+    return `<tr>
+      <td style="font-weight:700;font-size:11px">${z.zn}</td>
+      <td style="font-size:11px">${z.client}</td>
+      <td style="font-size:10px;color:var(--text2)">${z.org.replace('ADM-ASTER MCHJ Qk','ADM').replace('ASTER AUTO TRADE ИП ООО','AAT')}</td>
       <td style="text-align:right;color:#4f7cff">${z.nal>0?fmt(z.nal):'—'}</td>
       <td style="text-align:right;color:#9b59b6">${z.card>0?fmt(z.card):'—'}</td>
       <td style="text-align:right;font-weight:700">${fmt(z.total)}</td>
       <td style="text-align:right;color:var(--text2)">${z.znSum>0?fmt(z.znSum):'—'}</td>
-      <td style="text-align:right;font-weight:700;color:${isCredit?'#9b59b6':z.debt>0?'#ff4757':'#2ecc71'}">${isCredit?'▲'+fmt(z.total-z.znSum):z.debt>0?fmt(z.debt):'✅'}</td>
+      <td style="text-align:right;font-weight:700;color:${z.debt>0?'#ff4757':'#2ecc71'}">${z.debt>0?fmt(z.debt):'✅'}</td>
       <td>${badge}${bar}</td></tr>`;
   }).join('');
-}
-
-function zoOpenZN(znNum){
-  if(typeof znRows==='undefined'||!znRows.length){return;}
-  const idx=znRows.findIndex(r=>znField(r,'Номер')===znNum);
-  if(idx>=0) znOpenModal(idx);
 }
 
 </script>
