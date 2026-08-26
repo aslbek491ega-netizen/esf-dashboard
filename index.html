@@ -2612,8 +2612,11 @@ function parsePofamilno(rows){
     for (let r=2; r<rows.length; r++){
       const row = rows[r] || [];
       const inv = invCol!==undefined ? (row[invCol]||"").toString().trim() : "";
-      const resp = respCol!==undefined ? (row[respCol]||"").toString().trim() : "";
-      if (!inv || !resp) continue;  // resp VA inv ikkalasi ham bo'lishi shart
+      let resp = respCol!==undefined ? (row[respCol]||"").toString().trim() : "";
+      // Ответственный бўш бўлса — олдинги қаторнинг resp'ини мерос олиш (merge cell)
+      if (!resp && items.length > 0) resp = items[items.length-1].resp;
+      if (!inv) continue;  // Счёт-фактура бўлмаса — ўтказ
+      if (!resp) continue; // Resp ҳам йўқ бўлса — ўтказ
       const seller = sellerCol!==undefined ? (row[sellerCol]||"").toString().trim() : "";
       const srokRaw = srokCol!==undefined ? (row[srokCol]||"").toString().trim() : "";
       const srokNum = parseFloat(srokRaw.replace(",", "."));
@@ -2677,29 +2680,22 @@ function renderPofamilno(){
     if(!sorted.length){
       rowsHtml = `<tr><td colspan="4" style="color:var(--text2);padding:12px 10px;font-style:italic">Неподтверждённых ЭСФ нет</td></tr>`;
     } else {
-      Object.entries(byPerson).forEach(([person, items])=>{
-        const cnt = items.length;
-        const minSrok = Math.min(...items.map(i=>i.srok===null?999:i.srok));
-        const personCls = minSrok<=3?'color:#ff4757':minSrok<=7?'color:#f5a623':'color:#2ecc71';
-        // Ответственный сатри
-        rowsHtml += `<tr style="background:rgba(255,255,255,.03)">
-          <td colspan="4" style="padding:8px 10px;border-bottom:1px solid var(--border)">
-            <span style="font-weight:700;font-size:13px">${znEscape(person)}</span>
-            <span style="margin-left:8px;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(79,124,255,.15);color:#4f7cff">${cnt} та ЭСФ</span>
-            <span style="margin-left:6px;font-size:11px;${personCls}">min срок: ${minSrok===999?'—':minSrok} кун</span>
-          </td>
+      // Sheets'даги тартибда — ответственный фақат биринчи қаторда
+      sorted.forEach((i, idx)=>{
+        const cls = pfSrokClass(i.srok);
+        const bg  = idx%2===0?'':' style="background:rgba(255,255,255,.02)"';
+        // Ответственный: олдинги қатор билан бир хил бўлса — бўш
+        const prevResp = idx>0 ? sorted[idx-1].resp : null;
+        const showResp = i.resp !== prevResp;
+        const respCell = showResp
+          ? `<td style="font-weight:600;font-size:12px;vertical-align:top;padding:7px 10px;white-space:nowrap">${znEscape(i.resp)}</td>`
+          : `<td style="padding:7px 10px"></td>`;
+        rowsHtml += `<tr${bg}>
+          ${respCell}
+          <td style="font-size:12px;padding:7px 10px">${znEscape(i.inv)}</td>
+          <td style="font-size:12px;color:var(--text2);padding:7px 10px">${znEscape(i.seller)}</td>
+          <td style="text-align:center;padding:7px 10px"><span class="pill ${cls}" style="font-size:12px;padding:3px 10px">${znEscape(i.srokRaw||'—')}</span></td>
         </tr>`;
-        // Хужжатлар
-        items.forEach((i,idx)=>{
-          const cls = pfSrokClass(i.srok);
-          const bg  = idx%2===1?'background:rgba(255,255,255,.02)':'';
-          rowsHtml += `<tr style="${bg}">
-            <td style="padding-left:24px;color:var(--text2);font-size:11px">↳</td>
-            <td style="font-size:12px;font-weight:500">${znEscape(i.inv)}</td>
-            <td style="font-size:12px;color:var(--text2)">${znEscape(i.seller)}</td>
-            <td><span class="pill ${cls}" style="font-size:12px;padding:3px 10px">${znEscape(i.srokRaw||'—')}</span></td>
-          </tr>`;
-        });
       });
     }
 
