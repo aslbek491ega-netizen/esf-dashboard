@@ -2759,7 +2759,7 @@ async function pfSendAllToTelegram(){
     scrollWraps.forEach((el,i) => { el.style.cssText = prevCss[i]; });
     if (!blobs.length) throw new Error("Расмлар тайёрланмади");
 
-    const lines = ["Добрый день, коллеги! Просим ответственных лиц проверить и подтвердить ЭСФ.", ""];
+    const lines = ["Добрый день коллеги! Просим ответственных лиц проверить фактуры и дать обратную связь!", ""];
     companiesWithItems.forEach(c => {
       const mentions = [...new Set(c.items.map(i => pfMentionFor(i.resp)).filter(Boolean))];
       lines.push(`🏢 ${c.name}: ${mentions.join(" ")}`);
