@@ -2650,9 +2650,9 @@ function renderPofamilno(){
   const totalUnconfirmed = pfCompanies.reduce((s,c)=>s+c.items.length,0);
   const totalUrgent = pfCompanies.reduce((s,c)=>s+c.items.filter(i=>i.srok!==null && i.srok<=3).length,0);
   cardsBox.innerHTML = `
-    <div class="card"><div class="label">Корхоналар</div><div class="value">${fmt(pfCompanies.length)}</div></div>
+    <div class="card"><div class="label">Организации</div><div class="value">${fmt(pfCompanies.length)}</div></div>
     <div class="card"><div class="label">Неподтверждённые ЭСФ</div><div class="value">${fmt(totalUnconfirmed)}</div></div>
-    <div class="card"><div class="label">Критик (срок ≤3)</div><div class="value" style="color:var(--red)">${fmt(totalUrgent)}</div></div>
+    <div class="card"><div class="label">Критические (срок ≤3)</div><div class="value" style="color:var(--red)">${fmt(totalUrgent)}</div></div>
   `;
 
   const box = document.getElementById("pfCompanies");
