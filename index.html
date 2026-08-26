@@ -2600,9 +2600,13 @@ function parsePofamilno(rows){
     }
     const respCol = hMap["ответственный"];
     const invCol = hMap["СЧЁТ-ФАКТУРА"];
-    const sellerKey = Object.keys(hMap).find(k => k.toUpperCase().includes("ПРОДАВЕЦ"));
-    const sellerCol = sellerKey!==undefined ? hMap[sellerKey] : undefined;
     const srokCol = hMap["Срок"];
+    let sellerKey = Object.keys(hMap).find(k => k.toUpperCase().includes("ПРОДАВЕЦ"));
+    if (sellerKey===undefined) sellerKey = Object.keys(hMap).find(k => k.toUpperCase().includes("КОНТРАГЕНТ"));
+    let sellerCol = sellerKey!==undefined ? hMap[sellerKey] : undefined;
+    if (sellerCol===undefined && invCol!==undefined && srokCol!==undefined && srokCol - invCol === 2){
+      sellerCol = invCol + 1; // позиция буйича захира: СЧЁТ-ФАКТУРА билан Срок орасидаги ягона устун
+    }
 
     const items = [];
     for (let r=2; r<rows.length; r++){
@@ -2720,28 +2724,6 @@ function pfTelegramConfigured(){
   return !!(TG_BOT_TOKEN && TG_GROUP_CHAT_ID);
 }
 
-async function pfSendCompanyToTelegram(companyName, panelEl, mentions){
-  if (!pfTelegramConfigured()) throw new Error("TG_BOT_TOKEN / TG_GROUP_CHAT_ID кодда тулдирилмаган");
-  const canvas = await html2canvas(panelEl, {backgroundColor:"#0f1420", scale:2});
-  const blob = await new Promise(res => canvas.toBlob(res, "image/png"));
-  if (!blob) throw new Error("Расм тайёрланмади");
-
-  const uniqMentions = [...new Set(mentions.filter(Boolean))];
-  const caption = `Добрый день, коллеги! Просим ответственных лиц проверить и подтвердить ЭСФ.\n\n🏢 ${companyName}\n\n${uniqMentions.join(" ")}`.slice(0,1024);
-
-  const fd = new FormData();
-  fd.append("chat_id", TG_GROUP_CHAT_ID);
-  fd.append("caption", caption);
-  fd.append("photo", blob, `pf_${companyName}.png`);
-
-  const res = await fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN}/sendPhoto`, { method:"POST", body: fd });
-  const data = await res.json().catch(()=>({}));
-  if (!res.ok || data.ok === false){
-    throw new Error("Telegram: " + (data.description || res.status));
-  }
-  return data;
-}
-
 async function pfSendAllToTelegram(){
   const statusEl = document.getElementById("pfSendStatus");
   if (!pfTelegramConfigured()){
@@ -2749,23 +2731,71 @@ async function pfSendAllToTelegram(){
     return;
   }
   await loadPfUsers();
-  const panels = document.querySelectorAll("#pfCompanies .panel[data-company]");
-  if (statusEl) statusEl.textContent = "Юборилмокда…";
-  let ok=0, fail=0;
-  for (const panel of panels){
-    const companyName = panel.dataset.company;
-    const items = pfCompanies.find(c=>c.name===companyName)?.items || [];
-    if (!items.length) continue; // тасдикланмаган ЭСФ йук — жунатмаймиз
-    const mentions = items.map(i=>pfMentionFor(i.resp));
-    try{
-      await pfSendCompanyToTelegram(companyName, panel, mentions);
-      ok++;
-    } catch(e){
-      fail++;
-      console.error("Telegram yuborishda xato:", companyName, e.message);
-    }
+  const container = document.getElementById("pfCompanies");
+  const companiesWithItems = pfCompanies.filter(c => c.items.length);
+  if (!container || !companiesWithItems.length){
+    if (statusEl) statusEl.textContent = "Тасдикланмаган ЭСФ топилмади — юборилмади.";
+    return;
   }
-  if (statusEl) statusEl.textContent = `Юборилди: ${ok} корхона${fail?`, хатолик: ${fail}`:""} · ${new Date().toLocaleTimeString("ru-RU")}`;
+  if (statusEl) statusEl.textContent = "Юборилмокда…";
+
+  const allPanels = Array.from(container.querySelectorAll('.panel[data-company]'));
+  const panels = companiesWithItems
+    .map(c => allPanels.find(p => p.dataset.company === c.name))
+    .filter(Boolean);
+
+  // Скрин учун вактинча скролл/баландлик чекловини очамиз, токи расмда хамма катор куринсин.
+  const scrollWraps = Array.from(container.querySelectorAll('div[style*="overflow:auto"]'));
+  const prevCss = scrollWraps.map(el => el.style.cssText);
+  scrollWraps.forEach(el => { el.style.maxHeight = "none"; el.style.overflow = "visible"; });
+
+  try{
+    const blobs = [];
+    for (const panel of panels){
+      const canvas = await html2canvas(panel, {backgroundColor:"#0f1420", scale:2});
+      const blob = await new Promise(res => canvas.toBlob(res, "image/png"));
+      if (blob) blobs.push(blob);
+    }
+    scrollWraps.forEach((el,i) => { el.style.cssText = prevCss[i]; });
+    if (!blobs.length) throw new Error("Расмлар тайёрланмади");
+
+    const lines = ["Добрый день, коллеги! Просим ответственных лиц проверить и подтвердить ЭСФ.", ""];
+    companiesWithItems.forEach(c => {
+      const mentions = [...new Set(c.items.map(i => pfMentionFor(i.resp)).filter(Boolean))];
+      lines.push(`🏢 ${c.name}: ${mentions.join(" ")}`);
+    });
+    const caption = lines.join("\n").slice(0,1024);
+
+    const fd = new FormData();
+    fd.append("chat_id", TG_GROUP_CHAT_ID);
+    let url;
+
+    if (blobs.length === 1){
+      // Ягона расм булса — оддий sendPhoto (Telegram альбомда камида 2 та расм талаб килади)
+      fd.append("caption", caption);
+      fd.append("photo", blobs[0], "pf_0.png");
+      url = `https://api.telegram.org/bot${TG_BOT_TOKEN}/sendPhoto`;
+    } else {
+      const media = blobs.map((b,i) => {
+        const item = { type:"photo", media:`attach://photo${i}` };
+        if (i === 0) item.caption = caption;
+        return item;
+      });
+      fd.append("media", JSON.stringify(media));
+      blobs.forEach((b,i) => fd.append(`photo${i}`, b, `pf_${i}.png`));
+      url = `https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMediaGroup`;
+    }
+
+    const res = await fetch(url, { method:"POST", body: fd });
+    const data = await res.json().catch(()=>({}));
+    if (!res.ok || data.ok === false) throw new Error("Telegram: " + (data.description || res.status));
+
+    if (statusEl) statusEl.textContent = `Юборилди (${blobs.length} расм) · ${new Date().toLocaleTimeString("ru-RU")}`;
+  } catch(e){
+    scrollWraps.forEach((el,i) => { el.style.cssText = prevCss[i]; });
+    if (statusEl) statusEl.textContent = "Хатолик: " + e.message;
+    console.error("Telegram yuborishda xato:", e.message);
+  }
 }
 
 function pfCheckAutoSchedule(){
