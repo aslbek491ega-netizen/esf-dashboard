@@ -2613,7 +2613,7 @@ function parsePofamilno(rows){
       const row = rows[r] || [];
       const inv = invCol!==undefined ? (row[invCol]||"").toString().trim() : "";
       const resp = respCol!==undefined ? (row[respCol]||"").toString().trim() : "";
-      if (!inv && !resp) continue;
+      if (!inv || !resp) continue;  // resp VA inv ikkalasi ham bo'lishi shart
       const seller = sellerCol!==undefined ? (row[sellerCol]||"").toString().trim() : "";
       const srokRaw = srokCol!==undefined ? (row[srokCol]||"").toString().trim() : "";
       const srokNum = parseFloat(srokRaw.replace(",", "."));
@@ -2648,31 +2648,80 @@ async function loadPofamilno(){
 function renderPofamilno(){
   const cardsBox = document.getElementById("pfCards");
   const totalUnconfirmed = pfCompanies.reduce((s,c)=>s+c.items.length,0);
-  const totalUrgent = pfCompanies.reduce((s,c)=>s+c.items.filter(i=>i.srok!==null && i.srok<=3).length,0);
+  const totalUrgent   = pfCompanies.reduce((s,c)=>s+c.items.filter(i=>i.srok!==null&&i.srok<=3).length,0);
+  const totalWarn     = pfCompanies.reduce((s,c)=>s+c.items.filter(i=>i.srok!==null&&i.srok>3&&i.srok<=7).length,0);
+  const totalNormal   = pfCompanies.reduce((s,c)=>s+c.items.filter(i=>i.srok===null||i.srok>7).length,0);
+
   cardsBox.innerHTML = `
     <div class="card"><div class="label">Организации</div><div class="value">${fmt(pfCompanies.length)}</div></div>
-    <div class="card"><div class="label">Неподтверждённые ЭСФ</div><div class="value">${fmt(totalUnconfirmed)}</div></div>
-    <div class="card"><div class="label">Критические (срок ≤3)</div><div class="value" style="color:var(--red)">${fmt(totalUrgent)}</div></div>
+    <div class="card"><div class="label">Всего ЭСФ</div><div class="value">${fmt(totalUnconfirmed)}</div></div>
+    <div class="card"><div class="label">🔴 Срочно (≤3)</div><div class="value" style="color:var(--red)">${fmt(totalUrgent)}</div></div>
+    <div class="card"><div class="label">🟡 Внимание (4–7)</div><div class="value" style="color:var(--amber)">${fmt(totalWarn)}</div></div>
+    <div class="card"><div class="label">🟢 Норма (>7)</div><div class="value" style="color:var(--green)">${fmt(totalNormal)}</div></div>
   `;
 
   const box = document.getElementById("pfCompanies");
   if (!pfCompanies.length){ box.innerHTML = ""; return; }
 
   box.innerHTML = pfCompanies.map(c => {
-    const sorted = [...c.items].sort((a,b) => (a.srok===null?999:a.srok) - (b.srok===null?999:b.srok));
-    const rowsHtml = sorted.length ? sorted.map(i => `
-      <tr>
-        <td>${znEscape(i.resp)}</td>
-        <td>${znEscape(i.inv)}</td>
-        <td>${znEscape(i.seller)}</td>
-        <td><span class="pill ${pfSrokClass(i.srok)}">${znEscape(i.srokRaw || "-")}</span></td>
-      </tr>`).join("") : `<tr><td colspan="4" style="color:var(--text2)">Неподтверждённых ЭСФ нет</td></tr>`;
+    const sorted = [...c.items].sort((a,b)=>(a.srok===null?999:a.srok)-(b.srok===null?999:b.srok));
+
+    // Ответственный бўйича гурухлаш
+    const byPerson = {};
+    sorted.forEach(i=>{
+      if(!byPerson[i.resp]) byPerson[i.resp]=[];
+      byPerson[i.resp].push(i);
+    });
+
+    let rowsHtml = '';
+    if(!sorted.length){
+      rowsHtml = `<tr><td colspan="4" style="color:var(--text2);padding:12px 10px;font-style:italic">Неподтверждённых ЭСФ нет</td></tr>`;
+    } else {
+      Object.entries(byPerson).forEach(([person, items])=>{
+        const cnt = items.length;
+        const minSrok = Math.min(...items.map(i=>i.srok===null?999:i.srok));
+        const personCls = minSrok<=3?'color:#ff4757':minSrok<=7?'color:#f5a623':'color:#2ecc71';
+        // Ответственный сатри
+        rowsHtml += `<tr style="background:rgba(255,255,255,.03)">
+          <td colspan="4" style="padding:8px 10px;border-bottom:1px solid var(--border)">
+            <span style="font-weight:700;font-size:13px">${znEscape(person)}</span>
+            <span style="margin-left:8px;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(79,124,255,.15);color:#4f7cff">${cnt} та ЭСФ</span>
+            <span style="margin-left:6px;font-size:11px;${personCls}">min срок: ${minSrok===999?'—':minSrok} кун</span>
+          </td>
+        </tr>`;
+        // Хужжатлар
+        items.forEach((i,idx)=>{
+          const cls = pfSrokClass(i.srok);
+          const bg  = idx%2===1?'background:rgba(255,255,255,.02)':'';
+          rowsHtml += `<tr style="${bg}">
+            <td style="padding-left:24px;color:var(--text2);font-size:11px">↳</td>
+            <td style="font-size:12px;font-weight:500">${znEscape(i.inv)}</td>
+            <td style="font-size:12px;color:var(--text2)">${znEscape(i.seller)}</td>
+            <td><span class="pill ${cls}" style="font-size:12px;padding:3px 10px">${znEscape(i.srokRaw||'—')}</span></td>
+          </tr>`;
+        });
+      });
+    }
+
+    const urgCnt = sorted.filter(i=>i.srok!==null&&i.srok<=3).length;
+    const urgBadge = urgCnt>0?`<span style="margin-left:8px;padding:2px 7px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(255,71,87,.15);color:#ff4757">🔴 ${urgCnt} срочно</span>`:'';
+
     return `
-      <div class="panel" data-company="${znEscape(c.name)}" style="margin-bottom:16px;">
-        <h3>🏢 ${znEscape(c.name)} <span style="color:var(--text2);font-weight:400;font-size:13px;">(${fmt(c.items.length)})</span></h3>
-        <div style="overflow:auto;max-height:420px;">
-          <table>
-            <thead><tr><th>Ответственный</th><th>Счёт-фактура</th><th>Продавец</th><th>Срок</th></tr></thead>
+      <div class="panel" data-company="${znEscape(c.name)}" style="margin-bottom:14px;border:1px solid var(--border);">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+          <span style="font-size:16px">🏢</span>
+          <span style="font-size:15px;font-weight:700">${znEscape(c.name)}</span>
+          <span style="color:var(--text2);font-size:13px">(${fmt(c.items.length)})</span>
+          ${urgBadge}
+        </div>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead><tr style="border-bottom:1px solid var(--border)">
+              <th style="text-align:left;padding:6px 10px;color:var(--text2);font-size:11px;font-weight:600">Ответственный</th>
+              <th style="text-align:left;padding:6px 10px;color:var(--text2);font-size:11px;font-weight:600">Счёт-фактура</th>
+              <th style="text-align:left;padding:6px 10px;color:var(--text2);font-size:11px;font-weight:600">Продавец</th>
+              <th style="text-align:center;padding:6px 10px;color:var(--text2);font-size:11px;font-weight:600">Срок</th>
+            </tr></thead>
             <tbody>${rowsHtml}</tbody>
           </table>
         </div>
