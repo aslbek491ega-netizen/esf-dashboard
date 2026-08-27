@@ -931,7 +931,7 @@ const OPLATY_SHEET_NAME   = "ОПЛАТЫ";
 // Мавжуд ботнинг токенини шу ерга ёзинг (бот кодига тегмаймиз, факат унинг API'сидан фойдаланамиз).
 const TG_BOT_TOKEN = "8692748614:AAEYLJGGDA5TIBoeBdWtdhXeFaoj7TfN8ys";  // TEST bot — «проба» гурухи учун
 const TG_GROUP_CHAT_ID = "-5383074653";  // TEST: «проба» гурухи
-const TG_SEND_TIME = "09:00";            // хар куни шу вактда (браузер махаллий вакти буйича)
+// TG_SEND_TIME олиб ташланди — кундалик автомат юбориш йук, факат тугма орқали.
 const PF_USERS_SHEET_NAME = "users лист";
 // =========================================
 
@@ -2875,45 +2875,34 @@ async function pfSendAutomaticAlerts(){
     (byPerson[name] ||= []).push(item);
   }));
 
-  const todayKey = new Date().toISOString().slice(0,10);
-
+  // Эслатма: бу хабарлар учун "кунига бир марта" чекловi йук —
+  // тугма босилган хар сафар, шарт бажарилса, кайта юборилади.
   for (const [name, items] of Object.entries(byPerson)){
     const mention = pfMentionFor(name) || name;
 
     if (items.length >= 5){
-      const key = "pf_accumulated_5_" + todayKey + "_" + name;
-      if (localStorage.getItem(key) !== "1"){
-        await pfSendTelegramText(`${mention} У вас накопились ЭСФ. Просьба дать ОС.`);
-        localStorage.setItem(key,"1");
-      }
+      await pfSendTelegramText(`${mention} У вас накопились ЭСФ. Просьба дать ОС.`);
     }
 
     if (items.some(i => i.srok !== null && i.srok <= 2)){
-      const key = "pf_expiring_2_" + todayKey + "_" + name;
-      if (localStorage.getItem(key) !== "1"){
-        await pfSendTelegramText(`${mention} у вас есть истекающие ЭСФ. Если до конца рабочего дня не будет ОС, придется отказать СФ.`);
-        localStorage.setItem(key,"1");
-      }
+      await pfSendTelegramText(`${mention} у вас есть истекающие ЭСФ. Если до конца рабочего дня не будет ОС, придется отказать СФ.`);
     }
   }
 }
 
-function pfCheckAutoSchedule(){
-  if (!pfTelegramConfigured()) return;
-  const now = new Date();
-  const hhmm = String(now.getHours()).padStart(2,"0") + ":" + String(now.getMinutes()).padStart(2,"0");
-  const todayKey = now.toISOString().slice(0,10);
-  if (hhmm !== TG_SEND_TIME) return;
-  const storedKey = localStorage.getItem("pf_last_autosend_date");
-  if (storedKey === todayKey) return; // бугун аллакачон юборилган
-  localStorage.setItem("pf_last_autosend_date", todayKey);
-  loadPofamilno().then(async () => {
-    try{ await pfSendAutomaticAlerts(); }
-    catch(e){ console.error("Ошибка автоматических уведомлений:", e.message); }
-    setTimeout(pfSendAllToTelegram, 800);
-  });
+// Кундалик автомат юбориш (харкуни белгиланган вактда) учирилган —
+// энди фақат «📤 Отправить в Telegram сейчас» тугмаси орқали қулда юборилади.
+
+async function pfSendReportAndAlerts(){
+  const statusEl = document.getElementById("pfSendStatus");
+  try{
+    if (statusEl) statusEl.textContent = "Огохлантиришлар текширилмокда…";
+    await pfSendAutomaticAlerts();
+  } catch(e){
+    console.error("Ошибка автоматических уведомлений:", e.message);
+  }
+  await pfSendAllToTelegram();
 }
-setInterval(pfCheckAutoSchedule, 20*1000);
 
 document.addEventListener("DOMContentLoaded",()=>{
   const pfBack = document.getElementById("pfBackBtn");
@@ -2921,7 +2910,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   const pfSendBtn = document.getElementById("pfSendBtn");
   if (pfBack) pfBack.onclick = () => closePofamilnoPage();
   if (pfRefresh) pfRefresh.onclick = () => loadPofamilno();
-  if (pfSendBtn) pfSendBtn.onclick = () => pfSendAllToTelegram();
+  if (pfSendBtn) pfSendBtn.onclick = () => pfSendReportAndAlerts();
 });
 
 document.addEventListener("DOMContentLoaded",()=>{
