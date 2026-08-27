@@ -2691,19 +2691,19 @@ function renderPofamilno(){
         const srokColor = i.srok===null?'var(--text2)':i.srok<=2?'#ff4757':i.srok<=4?'#f5a623':'#2ecc71';
         const srokIcon  = i.srok===null?'—':i.srok<=2?'🔴':i.srok<=4?'🟡':'🟢';
         const respCell = isFirst
-          ? `<td style="padding:7px 10px;white-space:nowrap;${rowBg}">
+          ? `<td style="padding:7px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${rowBg}">
                <span style="color:#4f7cff;font-weight:700;margin-right:5px">▶</span>
                <span style="font-weight:700;font-size:12px">${znEscape(i.resp)}</span>
              </td>`
-          : `<td style="padding:7px 10px;white-space:nowrap;">
+          : `<td style="padding:7px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
                <span style="color:transparent;margin-right:5px">▶</span>
                <span style="font-size:12px;color:var(--text2)">${znEscape(i.resp)}</span>
              </td>`;
         rowsHtml += `<tr style="${rowBg}background:${isFirst?'rgba(79,124,255,.04)':'transparent'}">
           ${respCell}
-          <td style="font-size:12px;padding:7px 10px;font-weight:500">${znEscape(i.inv)}</td>
-          <td style="font-size:12px;padding:7px 10px;color:var(--text2)">${znEscape(i.seller)}</td>
-          <td style="text-align:center;padding:7px 10px;font-weight:700;color:${srokColor}">${srokIcon} ${i.srok===null?'—':i.srok}</td>
+          <td style="font-size:12px;padding:7px 10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${znEscape(i.inv)}</td>
+          <td style="font-size:12px;padding:7px 10px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${znEscape(i.seller)}</td>
+          <td style="text-align:center;padding:7px 10px;font-weight:700;color:${srokColor};white-space:nowrap;">${srokIcon} ${i.srok===null?'—':i.srok}</td>
         </tr>`;
       });
     }
@@ -2720,7 +2720,13 @@ function renderPofamilno(){
           ${urgBadge}
         </div>
         <div style="overflow-x:auto;">
-          <table style="width:100%;border-collapse:collapse;">
+          <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
+            <colgroup>
+              <col style="width:22%">
+              <col style="width:20%">
+              <col style="width:42%">
+              <col style="width:16%">
+            </colgroup>
             <thead><tr style="background:rgba(255,255,255,.04);border-bottom:2px solid var(--border)">
               <th style="text-align:left;padding:8px 10px;color:var(--text2);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Ответственный</th>
               <th style="text-align:left;padding:8px 10px;color:var(--text2);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Счёт-фактура</th>
@@ -2877,14 +2883,19 @@ async function pfSendAutomaticAlerts(){
 
   // Эслатма: бу хабарлар учун "кунига бир марта" чекловi йук —
   // тугма босилган хар сафар, шарт бажарилса, кайта юборилади.
-  for (const [name, items] of Object.entries(byPerson)){
-    const mention = pfMentionFor(name) || name;
+  // Тартиб: аввал ХАММА "накопились" хабарлари, кейин ХАММА "истекающие" хабарлари.
+  const entries = Object.entries(byPerson);
 
+  for (const [name, items] of entries){
     if (items.length >= 5){
+      const mention = pfMentionFor(name) || name;
       await pfSendTelegramText(`${mention} У вас накопились ЭСФ. Просьба дать ОС.`);
     }
+  }
 
+  for (const [name, items] of entries){
     if (items.some(i => i.srok !== null && i.srok <= 2)){
+      const mention = pfMentionFor(name) || name;
       await pfSendTelegramText(`${mention} у вас есть истекающие ЭСФ. Если до конца рабочего дня не будет ОС, придется отказать СФ.`);
     }
   }
@@ -2895,13 +2906,17 @@ async function pfSendAutomaticAlerts(){
 
 async function pfSendReportAndAlerts(){
   const statusEl = document.getElementById("pfSendStatus");
+  // 1) Аввал скринлар + умумий "Добрый день..." подпись
+  await pfSendAllToTelegram();
+  // 2) Кейин шахсий огохлантиришлар: аввал "накопились", охирида "истекающие"
   try{
-    if (statusEl) statusEl.textContent = "Огохлантиришлар текширилмокда…";
+    if (statusEl) statusEl.textContent = "Огохлантиришлар юборилмокда…";
     await pfSendAutomaticAlerts();
+    if (statusEl) statusEl.textContent = `Юборилди · ${new Date().toLocaleTimeString("ru-RU")}`;
   } catch(e){
     console.error("Ошибка автоматических уведомлений:", e.message);
+    if (statusEl) statusEl.textContent = "Хисобот юборилди, огохлантиришларда хатолик: " + e.message;
   }
-  await pfSendAllToTelegram();
 }
 
 document.addEventListener("DOMContentLoaded",()=>{
