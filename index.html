@@ -2886,18 +2886,30 @@ async function pfSendAutomaticAlerts(){
   // Тартиб: аввал ХАММА "накопились" хабарлари, кейин ХАММА "истекающие" хабарлари.
   const entries = Object.entries(byPerson);
 
+  // --- 1. "Накопились" (5+ ЭСФ) — БИТТА умумий хабар ---
+  const accumulatedMentions = [];
   for (const [name, items] of entries){
     if (items.length >= 5){
       const mention = pfMentionFor(name) || name;
-      await pfSendTelegramText(`${mention} У вас накопились ЭСФ. Просьба дать ОС.`);
+      accumulatedMentions.push(mention);
     }
   }
+  if (accumulatedMentions.length > 0){
+    const text = accumulatedMentions.join(" ") + "\nУ вас накопились ЭСФ. Просьба дать ОС.";
+    await pfSendTelegramText(text);
+  }
 
+  // --- 2. "Истекающие" (срок ≤2) — БИТТА умумий хабар ---
+  const expiringMentions = [];
   for (const [name, items] of entries){
     if (items.some(i => i.srok !== null && i.srok <= 2)){
       const mention = pfMentionFor(name) || name;
-      await pfSendTelegramText(`${mention} у вас есть истекающие ЭСФ. Если до конца рабочего дня не будет ОС, придется отказать СФ.`);
+      expiringMentions.push(mention);
     }
+  }
+  if (expiringMentions.length > 0){
+    const text = expiringMentions.join(" ") + "\nУ вас есть истекающие ЭСФ. Если до конца рабочего дня не будет ОС, придется отказать СФ.";
+    await pfSendTelegramText(text);
   }
 }
 
